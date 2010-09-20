@@ -2,16 +2,11 @@ PSGroove
 ========
 
 This is the PSGroove, an open-source reimplementation of the psjailbreak exploit for
-AT90USB and related microcontrollers.
+non-usb ATMega chips. (Like those used in arduinos.)
 
 It should work on:
 
-- AT90USB162
-- AT90USB646
-- AT90USB647
-- AT90USB1286
-- AT90USB1287
-- ATMEGA32U4
+- ATMega1280
 
 ... and maybe more.
 
@@ -21,12 +16,7 @@ of unsigned third-party apps and games on the PS3.**
 
 Cloning
 -------
-The repository uses the LUFA library as a submodule.  To clone, use something like:
-
     git clone git://github.com/psgroove/psgroove.git
-    cd psgroove
-    git submodule init
-    git submodule update
 
 
 Configuring
