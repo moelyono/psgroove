@@ -27,7 +27,7 @@
 #include "config.h"
 #include "psgroove.h"
 
-#include "descriptor_alt.h"
+#include "descriptor.h"
 #include "usb_utils.h"
 #include "oddebug.h"
 

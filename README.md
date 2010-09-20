@@ -24,43 +24,16 @@ Configuring
 Chip and board selection can usually be handled in the Makefile.
 In particular, update the MCU, BOARD, and F_CPU lines.  Suggested values:
 
-Teensy 1.0:
- 
-    MCU = at90usb162
-    BOARD = TEENSY
-    F_CLOCK = 16000000
+Arduino Mega
 
-Teensy++ 1.0:
- 
-    MCU = at90usb646
-    BOARD = TEENSY
-    F_CLOCK = 16000000
+   MCU = atmega1280
+   BOARD = ArduinoMega
+   F_CLOCK = 16000000
 
-Teensy 2.0:
-
-    MCU = atmega32u4
-    BOARD = TEENSY
-    F_CLOCK = 16000000
-
-Teensy++ 2.0:
- 
-    MCU = at90usb1286
-    BOARD = TEENSY
-    F_CLOCK = 16000000
-
-AT90USBKEY / AT90USBKEY2:
-
-    MCU = at90usb1287
-    BOARD = USBKEY
-    F_CLOCK = 8000000
 
 Board-specific notes
 --------------------
-Teensy boards only have one LED, so it will turn off when the exploit
-succeeds rather than turn green.  Older Teensy 1.0 boards also have
-the polarity inverted.  In general, a LED should do something when the
-board is powered, and do something different when the exploit works.
-
+See README in subfolder for Boards corresponding to your particular board.
 
 Building
 --------
