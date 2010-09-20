@@ -24,23 +24,12 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "descriptor.h"
+#include "config.h"
+#include "psgroove.h"
+
+#include "descriptor_alt.h"
 #include "usb_utils.h"
 #include "oddebug.h"
-
-// Teensy board only has the first LED, so it will turn off when 
-// exploit succeeds.
-#define RED	   1
-#define RED_PORT PORTB
-#define RED_DDR  DDRB
-#define RED_BIT  5
-#define GREEN	  2
-#define GREEN_PORT PORTH
-#define GREEN_DDR  DDRH
-#define GREEN_BIT  6
-#define BOTH	3
-#define NONE	0
-#define LED(x) setLed(x)
 
 void setLed(int color) {
    RED_PORT &= ~(1 << RED_BIT);
@@ -53,13 +42,9 @@ void setLed(int color) {
    }
 }
 
-#define PORT_EMPTY 0x0100   /* powered only */
-#define PORT_FULL 0x0303    /* connected, enabled, powered, low-speed */
-#define C_PORT_CONN  0x0001 /* connection */
-#define C_PORT_RESET 0x0010 /* reset */
-#define C_PORT_NONE  0x0000 /* no change */
 uint16_t port_status[6] = { PORT_EMPTY, PORT_EMPTY, PORT_EMPTY, PORT_EMPTY, PORT_EMPTY, PORT_EMPTY };
 uint16_t port_change[6] = { C_PORT_NONE, C_PORT_NONE, C_PORT_NONE, C_PORT_NONE, C_PORT_NONE, C_PORT_NONE };
+
 enum { 
 	init,
 	wait_hub_ready,
@@ -145,7 +130,7 @@ void SetupLEDs()
 {
    GREEN_DDR |= (1 << GREEN_BIT);
    RED_DDR |= (1 << RED_BIT);
-   LED(NONE);
+   setLed(NONE);
 }
 
 void SetupHardware(void)
@@ -174,9 +159,9 @@ void panic(int led1, int led2)
    DBGMSG1("Panic!");
 	for(;;) {
 		_delay_ms(1000);
-		LED(led1);
+		setLed(led1);
 		_delay_ms(1000);
-		LED(led2);
+		setLed(led2);
 	}		
 }
 
@@ -257,7 +242,7 @@ int main(void)
 {
 	SetupHardware();
 
-	LED(RED);
+	setLed(RED);
 
 	state = init;
 	switch_port(0);
@@ -282,7 +267,7 @@ int main(void)
 		if (state == hub_ready && expire == 0)
 		{
          DBG1(0x00, "\x1", 1);
-         LED(NONE);
+         setLed(NONE);
 			connect_port(1);
 			state = p1_wait_reset;
 		}
@@ -290,7 +275,7 @@ int main(void)
 		if (state == p1_wait_reset && last_port_reset_clear == 1)
 		{
          DBG1(0x00, "\x2", 1);
-         LED(RED);
+         setLed(RED);
 			switch_port(1);
 			state = p1_wait_enumerate;
 		}
@@ -299,7 +284,7 @@ int main(void)
 		if (state == p1_ready && expire == 0)
 		{
          DBG1(0x00, "\x3", 1);
-         LED(NONE);
+         setLed(NONE);
 			switch_port(0);
 			connect_port(2);
 			state = p2_wait_reset;
@@ -308,7 +293,7 @@ int main(void)
 		if (state == p2_wait_reset && last_port_reset_clear == 2)
 		{
          DBG1(0x00, "\x4", 1);
-         LED(RED);
+         setLed(RED);
 			switch_port(2);
 			state = p2_wait_enumerate;
 		}
@@ -317,7 +302,7 @@ int main(void)
 		if (state == p2_ready && expire == 0)
 		{
          DBG1(0x00, "\x5", 1);
-         LED(NONE);
+         setLed(NONE);
 			switch_port(0);
 			connect_port(3);
 			state = p3_wait_reset;
@@ -326,7 +311,7 @@ int main(void)
 		if (state == p3_wait_reset && last_port_reset_clear == 3)
 		{
          DBG1(0x00, "\x6", 1);
-         LED(RED);
+         setLed(RED);
 			switch_port(3);
 			state = p3_wait_enumerate;
 		}
@@ -335,7 +320,7 @@ int main(void)
 		if (state == p3_ready && expire == 0)
 		{
          DBG1(0x00, "\x7", 1);
-         LED(NONE);
+         setLed(NONE);
 			switch_port(0);
 			disconnect_port(2);
 			state = p2_wait_disconnect;
@@ -344,7 +329,7 @@ int main(void)
 		if (state == p2_wait_disconnect && last_port_conn_clear == 2)
 		{
          DBG1(0x00, "\x8", 1);
-         LED(RED);
+         setLed(RED);
 			state = p4_wait_connect;
 			expire = 15;
 		}
@@ -353,7 +338,7 @@ int main(void)
 		if (state == p4_wait_connect && expire == 0) 
 		{
          DBG1(0x00, "\x9", 1);
-         LED(NONE);
+         setLed(NONE);
 			connect_port(4);
 			state = p4_wait_reset;
 		}
@@ -361,7 +346,7 @@ int main(void)
 		if (state == p4_wait_reset && last_port_reset_clear == 4)
 		{
          DBG1(0x00, "\x10", 1);
-         LED(RED);
+         setLed(RED);
 			switch_port(4);
 			state = p4_wait_enumerate;
 		}
@@ -370,7 +355,7 @@ int main(void)
 		if (state == p4_ready && expire == 0)
 		{
          DBG1(0x00, "\x11", 1);
-         LED(NONE);
+         setLed(NONE);
 			switch_port(0);
 			/* When first connecting port 5, we need to
 			   have the wrong data toggle for the PS3 to
@@ -383,7 +368,7 @@ int main(void)
 		if (state == p5_wait_reset && last_port_reset_clear == 5)
 		{
          DBG1(0x00, "\x12", 1);
-         LED(RED);
+         setLed(RED);
 			switch_port(5);
 			state = p5_wait_enumerate;
 		}
@@ -392,7 +377,7 @@ int main(void)
 		if (state == p5_responded && expire == 0)
 		{
          DBG1(0x00, "\x13", 1);
-         LED(NONE);
+         setLed(NONE);
 			switch_port(0);
 			/* Need wrong data toggle again */
 			hub_int_force_data0 = 1;
@@ -403,7 +388,7 @@ int main(void)
 		if (state == p3_wait_disconnect && last_port_conn_clear == 3)
 		{
          DBG1(0x00, "\x14", 1);
-         LED(RED);
+         setLed(RED);
 			state = p3_disconnected;
 			expire = 45;
 		}
@@ -412,7 +397,7 @@ int main(void)
 		if (state == p3_disconnected && expire == 0)
 		{
          DBG1(0x00, "\x15", 1);
-         LED(NONE);
+         setLed(NONE);
 			switch_port(0);
 			disconnect_port(5);
 			state = p5_wait_disconnect;
@@ -421,7 +406,7 @@ int main(void)
 		if (state == p5_wait_disconnect && last_port_conn_clear == 5)
 		{
          DBG1(0x00, "\x16", 1);
-         LED(RED);
+         setLed(RED);
 			state = p5_disconnected;
 			expire = 20;
 		}
@@ -430,7 +415,7 @@ int main(void)
 		if (state == p5_disconnected && expire == 0)
 		{
          DBG1(0x00, "\x17", 1);
-         LED(NONE);
+         setLed(NONE);
 			switch_port(0);
 			disconnect_port(4);
 			state = p4_wait_disconnect;
@@ -439,7 +424,7 @@ int main(void)
 		if (state == p4_wait_disconnect && last_port_conn_clear == 4)
 		{
          DBG1(0x00, "\x18", 1);
-         LED(RED);
+         setLed(RED);
 			state = p4_disconnected;
 			expire = 20;
 		}
@@ -448,7 +433,7 @@ int main(void)
 		if (state == p4_disconnected && expire == 0)
 		{
          DBG1(0x00, "\x19", 1);
-         LED(NONE);
+         setLed(NONE);
 			switch_port(0);
 			disconnect_port(1);
 			state = p1_wait_disconnect;
@@ -457,7 +442,7 @@ int main(void)
 		if (state == p1_wait_disconnect && last_port_conn_clear == 1)
 		{
          DBG1(0x00, "\x20", 1);
-         LED(RED);
+         setLed(RED);
 			state = p1_disconnected;
 			expire = 20;
 		}
@@ -466,7 +451,7 @@ int main(void)
 		if (state == p1_disconnected && expire == 0)
 		{
          DBG1(0x00, "\x21", 1);
-         LED(NONE);
+         setLed(NONE);
 			switch_port(0);
 			connect_port(6);
 			state = p6_wait_reset;
@@ -475,7 +460,7 @@ int main(void)
 		if (state == p6_wait_reset && last_port_reset_clear == 6)
 		{
          DBG1(0x00, "\x22", 1);
-         LED(RED);
+         setLed(RED);
 			switch_port(6);
 			state = p6_wait_enumerate;
 		}
@@ -483,7 +468,7 @@ int main(void)
 		// done
 		if (state == done)
 		{
-			LED(GREEN);
+			setLed(GREEN);
 		}
 	}
 }

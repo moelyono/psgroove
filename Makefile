@@ -62,9 +62,8 @@
 # MCU name
 MCU = atmega1280
 
-
-# Unused at the moment.
-BOARD  = TEENSY
+# Corresponds to a particular directory in the Boards subfolder.
+BOARD  = ArduinoMega
 
 # Due to some silly timing issues. This currently needs to stay at 1
 DEBUG_LEVEL = 1
@@ -145,7 +144,7 @@ DEBUG = dwarf-2
 #     Each directory must be seperated by a space.
 #     Use forward slashes for directory separators.
 #     For a directory that has spaces, enclose it in quotes.
-EXTRAINCDIRS = usbdrv/
+EXTRAINCDIRS = usbdrv/ Boards/${BOARD}
 
 
 # Compiler flag to set the C Standard level.
