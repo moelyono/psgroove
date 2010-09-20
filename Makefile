@@ -60,14 +60,14 @@
 
 
 # MCU name
-MCU = at90usb1286
+MCU = atmega1280
 
 
-# Target board (see library "Board Types" documentation, NONE for projects not requiring
-# LUFA board drivers). If USER is selected, put custom board drivers in a directory called 
-# "Board" inside the application directory.
+# Unused at the moment.
 BOARD  = TEENSY
 
+# Due to some silly timing issues. This currently needs to stay at 1
+DEBUG_LEVEL = 1
 
 # Processor frequency.
 #     This will define a symbol, F_CPU, in all source code files equal to the 
@@ -110,26 +110,8 @@ TARGET = psgroove
 #     this an empty or blank macro!
 OBJDIR = .
 
-
-# Path to the LUFA library
-LUFA_PATH = lufa-lib/trunk
-
-
-# LUFA library compile-time options and predefined tokens
-LUFA_OPTS  = -D USB_DEVICE_ONLY
-LUFA_OPTS += -D FIXED_CONTROL_ENDPOINT_SIZE=8
-LUFA_OPTS += -D USE_FLASH_DESCRIPTORS
-LUFA_OPTS += -D MEMSPACE_FLASH=0
-LUFA_OPTS += -D MEMSPACE_EEPROM=1
-LUFA_OPTS += -D USE_STATIC_OPTIONS="(USB_DEVICE_OPT_FULLSPEED | USB_OPT_REG_ENABLED | USB_OPT_AUTO_PLL)"
-
-
-# Create the LUFA source path variables by including the LUFA root makefile
-include $(LUFA_PATH)/LUFA/makefile
-
-
 # List C source files here. (C dependencies are automatically generated.)
-SRC = psgroove.c $(LUFA_SRC_USB)
+SRC = psgroove.c usb_utils.c usbdrv/usbdrv.c usbdrv/oddebug.c
 
 
 # List C++ source files here. (C dependencies are automatically generated.)
@@ -143,7 +125,7 @@ CPPSRC =
 #     Even though the DOS/Win* filesystem matches both .s and .S the same,
 #     it will preserve the spelling of the filenames, and gcc itself does
 #     care about how the name is spelled on its command-line.
-ASRC =
+ASRC = usbdrv/usbdrvasm.S
 
 
 # Optimization level, can be [0, 1, 2, 3, s]. 
@@ -163,7 +145,7 @@ DEBUG = dwarf-2
 #     Each directory must be seperated by a space.
 #     Use forward slashes for directory separators.
 #     For a directory that has spaces, enclose it in quotes.
-EXTRAINCDIRS = $(LUFA_PATH)/
+EXTRAINCDIRS = usbdrv/
 
 
 # Compiler flag to set the C Standard level.
@@ -178,20 +160,18 @@ CSTANDARD = -std=c99
 CDEFS  = -DF_CPU=$(F_CPU)UL
 CDEFS += -DF_CLOCK=$(F_CLOCK)UL
 CDEFS += -DBOARD=BOARD_$(BOARD)
-CDEFS += $(LUFA_OPTS)
+CDEFS += -DDEBUG_LEVEL=${DEBUG_LEVEL}
 
 
 # Place -D or -U options here for ASM sources
 ADEFS  = -DF_CPU=$(F_CPU)
 ADEFS += -DF_CLOCK=$(F_CLOCK)UL
 ADEFS += -DBOARD=BOARD_$(BOARD)
-ADEFS += $(LUFA_OPTS)
 
 # Place -D or -U options here for C++ sources
 CPPDEFS  = -DF_CPU=$(F_CPU)UL
 CPPDEFS += -DF_CLOCK=$(F_CLOCK)UL
 CPPDEFS += -DBOARD=BOARD_$(BOARD)
-CPPDEFS += $(LUFA_OPTS)
 #CPPDEFS += -D__STDC_LIMIT_MACROS
 #CPPDEFS += -D__STDC_CONSTANT_MACROS
 
@@ -335,10 +315,10 @@ LDFLAGS += $(PRINTF_LIB) $(SCANF_LIB) $(MATH_LIB)
 # Type: avrdude -c ?
 # to get a full listing.
 #
-AVRDUDE_PROGRAMMER = jtagmkII
+AVRDUDE_PROGRAMMER = stk500v1 -b 57600
 
 # com1 = serial port. Use lpt1 to connect to parallel port.
-AVRDUDE_PORT = usb
+AVRDUDE_PORT = /dev/tty.usbserial-A6008hgx
 
 AVRDUDE_WRITE_FLASH = -U flash:w:$(TARGET).hex
 #AVRDUDE_WRITE_EEPROM = -U eeprom:w:$(TARGET).eep

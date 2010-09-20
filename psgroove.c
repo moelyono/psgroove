@@ -19,27 +19,42 @@
 #include <avr/wdt.h>
 #include <avr/power.h>
 #include <avr/interrupt.h>
+#include <avr/pgmspace.h>
 #include <util/delay.h>
 #include <string.h>
 #include <stdio.h>
 
-#include <LUFA/Version.h>
-#include <LUFA/Drivers/Board/LEDs.h>
-#include <LUFA/Drivers/USB/USB.h>
-#include <LUFA/Drivers/USB/Class/CDC.h>
-
 #include "descriptor.h"
+#include "usb_utils.h"
+#include "oddebug.h"
 
 // Teensy board only has the first LED, so it will turn off when 
 // exploit succeeds.
-#define RED	(LEDS_LED1)
-#define GREEN	(LEDS_LED2)
-#define BOTH	(RED|GREEN)
-#define NONE	(LEDS_NO_LEDS)
-#define LED(x) LEDs_SetAllLEDs(x)
+#define RED	   1
+#define RED_PORT PORTB
+#define RED_DDR  DDRB
+#define RED_BIT  5
+#define GREEN	  2
+#define GREEN_PORT PORTH
+#define GREEN_DDR  DDRH
+#define GREEN_BIT  6
+#define BOTH	3
+#define NONE	0
+#define LED(x) setLed(x)
+
+void setLed(int color) {
+   RED_PORT &= ~(1 << RED_BIT);
+   GREEN_PORT &= ~(1 << GREEN_BIT);
+   if (color & RED) {
+      RED_PORT |= 1 << RED_BIT;
+   }
+   if (color & GREEN) {
+      GREEN_PORT |= 1 << GREEN_BIT;
+   }
+}
 
 #define PORT_EMPTY 0x0100   /* powered only */
-#define PORT_FULL 0x0103    /* connected, enabled, powered, full-speed */
+#define PORT_FULL 0x0303    /* connected, enabled, powered, low-speed */
 #define C_PORT_CONN  0x0001 /* connection */
 #define C_PORT_RESET 0x0010 /* reset */
 #define C_PORT_NONE  0x0000 /* no change */
@@ -85,24 +100,35 @@ uint8_t hub_int_force_data0 = 0;
 int last_port_conn_clear = 0;
 int last_port_reset_clear = 0;
 
-int8_t port_addr[7] = { -1, -1, -1, -1, -1, -1, -1 };
+// Need a copy in ram to work with usbFunctionDescriptor()
+uchar HUB_Hub_Descriptor_ram[sizeof(HUB_Hub_Descriptor)];
+
+uchar port_addr[7] = { 0, 0, 0, 0, 0, 0, 0 };
+uchar connected_ports[7] = { 1, 0, 0, 0, 0, 0, 0 };
 int8_t port_cur = -1;
 
-void USB_Device_SetDeviceAddress(uint8_t Address)
+extern uchar usbDeviceAddr;
+extern uchar usbNewDeviceAddr;
+extern uchar usbRxLen;
+extern uchar usbTxLen;
+
+void usbSetAddr(uchar addr)
 {
-	port_addr[port_cur] = Address & 0x7f;
-	UDADDR = Address & 0x7f;
-	UDADDR |= (1 << ADDEN);
+   uchar msg[] = {port_cur, addr};
+   DBG2(0x03, msg, 2);
+   if(port_addr[port_cur] == 0)
+      port_addr[port_cur] = addr;
 }
 
-void switch_port(int8_t port)
+void switch_port(uchar port)
 {
 	if (port_cur == port) return;
 	port_cur = port;
-	if (port_addr[port] < 0)
-		port_addr[port] = 0;
-	UDADDR = port_addr[port] & 0x7f;
-	UDADDR |= (1 << ADDEN);
+   usbRxLen = 0;
+   usbTxLen = 0;
+   usbTxLen1 = USBPID_NAK;
+   usbNewDeviceAddr = port_addr[port];
+	usbDeviceAddr = port_addr[port] << 1;
 }
 
 volatile uint8_t expire = 0; /* counts down every 10 milliseconds */
@@ -115,8 +141,17 @@ ISR(TIMER1_OVF_vect)
 		expire--;
 }
 
+void SetupLEDs()
+{
+   GREEN_DDR |= (1 << GREEN_BIT);
+   RED_DDR |= (1 << RED_BIT);
+   LED(NONE);
+}
+
 void SetupHardware(void)
 {
+   usbDeviceConnect();
+   odDebugInit();
 	/* Disable watchdog if enabled by bootloader/fuses */
 	MCUSR &= ~(1 << WDRF);
 	wdt_disable();
@@ -129,34 +164,34 @@ void SetupHardware(void)
 	TIMSK1 = 0x01;
 
 	/* Hardware Initialization */
-	LEDs_Init();
-	USB_Init();
+	SetupLEDs();
+   usbInit();
 	sei(); 
 }
 
 void panic(int led1, int led2)
 {
+   DBGMSG1("Panic!");
 	for(;;) {
-		_delay_ms(100);
+		_delay_ms(1000);
 		LED(led1);
-		_delay_ms(100);
+		_delay_ms(1000);
 		LED(led2);
 	}		
 }
 
 void HUB_Task(void)
 {
-	Endpoint_SelectEndpoint(1);
-
-	if (Endpoint_IsReadWriteAllowed())
+	if (usbInterruptIsReady())
 	{
 		if (hub_int_response) {
 			if (hub_int_force_data0) {
-				Endpoint_ResetDataToggle();
+            resetDataToggle();
 				hub_int_force_data0 = 0;
 			}
-			Endpoint_Write_Byte(hub_int_response);
-			Endpoint_ClearIN();
+         interruptWrite_Byte(hub_int_response);
+         sendInterruptBuffer();
+         DBGX2("Hub resp: ", &hub_int_response, 1);
 			hub_int_response = 0x00;
 		}
 	}
@@ -169,28 +204,28 @@ const uint8_t PROGMEM jig_response[64] = {
 	0x38, 0xc3, 0xf0, 0x20, 0x7c, 0xc9, 0x03, 0xa6, 0x4e, 0x80, 0x04, 0x20, 0x04, 0x00, 0x00, 0x00,
 };
 
+// Junk the jig challenge.
+uchar usbFunctionWrite(uchar *data, uchar len)
+{
+   static int bytes_out = 0;
+   bytes_out += 8;
+   if (bytes_out >= 64) {
+      expire = 50;
+      state = p5_challenged;
+      DBGMSG2("Finished challenge.");
+      return 0;
+   } else {
+      return USB_NO_MSG;
+   }
+}
+
 void JIG_Task(void)
 {
-	static int bytes_out = 0, bytes_in = 0;
-
-        Endpoint_SelectEndpoint(2);
-        if (Endpoint_IsReadWriteAllowed())
-        {
-		Endpoint_Discard_Stream(8, NO_STREAM_CALLBACK);
-                Endpoint_ClearOUT();
-		bytes_out += 8;
-		if (bytes_out >= 64) {
-			state = p5_challenged;
-			expire = 50; // was 90
-		}
-	}
-
-        Endpoint_SelectEndpoint(1);
-        if (Endpoint_IsReadWriteAllowed() && state == p5_challenged && expire == 0) 
+	static uchar bytes_in = 0;
+   if (usbInterruptIsReady() && state == p5_challenged && expire == 0) 
 	{
 		if (bytes_in < 64) {
-			Endpoint_Write_PStream_LE(&jig_response[bytes_in], 8, NO_STREAM_CALLBACK);
-			Endpoint_ClearIN();
+         pUsbSetInterrupt(&jig_response[bytes_in], 8);
 			bytes_in += 8;
 			if (bytes_in >= 64) {
 				state = p5_responded;
@@ -202,16 +237,18 @@ void JIG_Task(void)
 
 void connect_port(int port)
 {
+   connected_ports[port] = 1;
 	last_port_reset_clear = 0;
-	hub_int_response = (1 << port);
+	hub_int_response |= (1 << port);
 	port_status[port - 1] = PORT_FULL;
 	port_change[port - 1] = C_PORT_CONN;
 }
 
 void disconnect_port(int port)
 {
+   connected_ports[port] = 0;
 	last_port_conn_clear = 0;
-	hub_int_response = (1 << port);
+	hub_int_response |= (1 << port);
 	port_status[port - 1] = PORT_EMPTY;
 	port_change[port - 1] = C_PORT_CONN;
 }
@@ -224,6 +261,12 @@ int main(void)
 
 	state = init;
 	switch_port(0);
+   DBGMSG1("Ready.");
+
+   // Copy the hub descriptor into ram, vusb's
+   // usbFunctionSetup() callback can't handle stuff
+   // from FLASH
+   memcpy_P(HUB_Hub_Descriptor_ram, HUB_Hub_Descriptor, sizeof(HUB_Hub_Descriptor));
 
 	for (;;)
 	{
@@ -233,17 +276,21 @@ int main(void)
 		if (port_cur == 5)
 			JIG_Task();
 
-		USB_USBTask();
-		
+      usbPoll();
+
 		// connect 1
 		if (state == hub_ready && expire == 0)
 		{
+         DBG1(0x00, "\x1", 1);
+         LED(NONE);
 			connect_port(1);
 			state = p1_wait_reset;
 		}
 		
 		if (state == p1_wait_reset && last_port_reset_clear == 1)
 		{
+         DBG1(0x00, "\x2", 1);
+         LED(RED);
 			switch_port(1);
 			state = p1_wait_enumerate;
 		}
@@ -251,6 +298,8 @@ int main(void)
 		// connect 2
 		if (state == p1_ready && expire == 0)
 		{
+         DBG1(0x00, "\x3", 1);
+         LED(NONE);
 			switch_port(0);
 			connect_port(2);
 			state = p2_wait_reset;
@@ -258,6 +307,8 @@ int main(void)
 
 		if (state == p2_wait_reset && last_port_reset_clear == 2)
 		{
+         DBG1(0x00, "\x4", 1);
+         LED(RED);
 			switch_port(2);
 			state = p2_wait_enumerate;
 		}
@@ -265,6 +316,8 @@ int main(void)
 		// connect 3
 		if (state == p2_ready && expire == 0)
 		{
+         DBG1(0x00, "\x5", 1);
+         LED(NONE);
 			switch_port(0);
 			connect_port(3);
 			state = p3_wait_reset;
@@ -272,6 +325,8 @@ int main(void)
 
 		if (state == p3_wait_reset && last_port_reset_clear == 3)
 		{
+         DBG1(0x00, "\x6", 1);
+         LED(RED);
 			switch_port(3);
 			state = p3_wait_enumerate;
 		}
@@ -279,6 +334,8 @@ int main(void)
 		// disconnect 2
 		if (state == p3_ready && expire == 0)
 		{
+         DBG1(0x00, "\x7", 1);
+         LED(NONE);
 			switch_port(0);
 			disconnect_port(2);
 			state = p2_wait_disconnect;
@@ -286,6 +343,8 @@ int main(void)
 
 		if (state == p2_wait_disconnect && last_port_conn_clear == 2)
 		{
+         DBG1(0x00, "\x8", 1);
+         LED(RED);
 			state = p4_wait_connect;
 			expire = 15;
 		}
@@ -293,12 +352,16 @@ int main(void)
 		// connect 4
 		if (state == p4_wait_connect && expire == 0) 
 		{
+         DBG1(0x00, "\x9", 1);
+         LED(NONE);
 			connect_port(4);
 			state = p4_wait_reset;
 		}
 
 		if (state == p4_wait_reset && last_port_reset_clear == 4)
 		{
+         DBG1(0x00, "\x10", 1);
+         LED(RED);
 			switch_port(4);
 			state = p4_wait_enumerate;
 		}
@@ -306,6 +369,8 @@ int main(void)
 		// connect 5
 		if (state == p4_ready && expire == 0)
 		{
+         DBG1(0x00, "\x11", 1);
+         LED(NONE);
 			switch_port(0);
 			/* When first connecting port 5, we need to
 			   have the wrong data toggle for the PS3 to
@@ -317,6 +382,8 @@ int main(void)
 
 		if (state == p5_wait_reset && last_port_reset_clear == 5)
 		{
+         DBG1(0x00, "\x12", 1);
+         LED(RED);
 			switch_port(5);
 			state = p5_wait_enumerate;
 		}
@@ -324,6 +391,8 @@ int main(void)
 		// disconnect 3
 		if (state == p5_responded && expire == 0)
 		{
+         DBG1(0x00, "\x13", 1);
+         LED(NONE);
 			switch_port(0);
 			/* Need wrong data toggle again */
 			hub_int_force_data0 = 1;
@@ -333,6 +402,8 @@ int main(void)
 
 		if (state == p3_wait_disconnect && last_port_conn_clear == 3)
 		{
+         DBG1(0x00, "\x14", 1);
+         LED(RED);
 			state = p3_disconnected;
 			expire = 45;
 		}
@@ -340,6 +411,8 @@ int main(void)
 		// disconnect 5
 		if (state == p3_disconnected && expire == 0)
 		{
+         DBG1(0x00, "\x15", 1);
+         LED(NONE);
 			switch_port(0);
 			disconnect_port(5);
 			state = p5_wait_disconnect;
@@ -347,6 +420,8 @@ int main(void)
 
 		if (state == p5_wait_disconnect && last_port_conn_clear == 5)
 		{
+         DBG1(0x00, "\x16", 1);
+         LED(RED);
 			state = p5_disconnected;
 			expire = 20;
 		}
@@ -354,6 +429,8 @@ int main(void)
 		// disconnect 4
 		if (state == p5_disconnected && expire == 0)
 		{
+         DBG1(0x00, "\x17", 1);
+         LED(NONE);
 			switch_port(0);
 			disconnect_port(4);
 			state = p4_wait_disconnect;
@@ -361,6 +438,8 @@ int main(void)
 
 		if (state == p4_wait_disconnect && last_port_conn_clear == 4)
 		{
+         DBG1(0x00, "\x18", 1);
+         LED(RED);
 			state = p4_disconnected;
 			expire = 20;
 		}
@@ -368,6 +447,8 @@ int main(void)
 		// disconnect 1
 		if (state == p4_disconnected && expire == 0)
 		{
+         DBG1(0x00, "\x19", 1);
+         LED(NONE);
 			switch_port(0);
 			disconnect_port(1);
 			state = p1_wait_disconnect;
@@ -375,6 +456,8 @@ int main(void)
 
 		if (state == p1_wait_disconnect && last_port_conn_clear == 1)
 		{
+         DBG1(0x00, "\x20", 1);
+         LED(RED);
 			state = p1_disconnected;
 			expire = 20;
 		}
@@ -382,6 +465,8 @@ int main(void)
 		// connect 6
 		if (state == p1_disconnected && expire == 0)
 		{
+         DBG1(0x00, "\x21", 1);
+         LED(NONE);
 			switch_port(0);
 			connect_port(6);
 			state = p6_wait_reset;
@@ -389,6 +474,8 @@ int main(void)
 
 		if (state == p6_wait_reset && last_port_reset_clear == 6)
 		{
+         DBG1(0x00, "\x22", 1);
+         LED(RED);
 			switch_port(6);
 			state = p6_wait_enumerate;
 		}
@@ -401,55 +488,52 @@ int main(void)
 	}
 }
 
-uint16_t CALLBACK_USB_GetDescriptor(const uint16_t wValue,
-                                    const uint8_t wIndex,
-                                    const void** const DescriptorAddress)
+usbMsgLen_t usbFunctionDescriptor(struct usbRequest *rq)
 {
-	const uint8_t  DescriptorType   = (wValue >> 8);
-	const uint8_t  DescriptorNumber = (wValue & 0xFF);
-	const uint16_t  wLength = USB_ControlRequest.wLength;
+	const uint8_t  DescriptorType   = rq->wValue.bytes[1];
+	const uint8_t  DescriptorNumber = rq->wValue.bytes[0];
+	const uint16_t  wLength = rq->wLength.word;
 
-	void*          Address = NULL;
-	uint16_t       Size    = NO_DESCRIPTOR;
+	usbMsgLen_t       Size    = 0;
 
 	switch (DescriptorType)
 	{
-	case DTYPE_Device:
+	case USBDESCR_DEVICE:
 		switch (port_cur) {
 		case 0:
-			Address = (void *) HUB_Device_Descriptor;
+			usbMsgPtr = (void *) HUB_Device_Descriptor;
 			Size    = sizeof(HUB_Device_Descriptor);
 			break;
 		case 1:
-			Address = (void *) port1_device_descriptor;
+			usbMsgPtr = (void *) port1_device_descriptor;
 			Size    = sizeof(port1_device_descriptor);
 			break;
 		case 2:
-			Address = (void *) port2_device_descriptor;
+			usbMsgPtr = (void *) port2_device_descriptor;
 			Size    = sizeof(port2_device_descriptor);
 			break;
 		case 3:
-			Address = (void *) port3_device_descriptor;
+			usbMsgPtr = (void *) port3_device_descriptor;
 			Size    = sizeof(port3_device_descriptor);
 			break;
 		case 4:
-			Address = (void *) port4_device_descriptor;
+			usbMsgPtr = (void *) port4_device_descriptor;
 			Size    = sizeof(port4_device_descriptor);
 			break;
 		case 5:
-			Address = (void *) port5_device_descriptor;
+			usbMsgPtr = (void *) port5_device_descriptor;
 			Size    = sizeof(port5_device_descriptor);
 			break;
 		case 6:
-			Address = (void *) port6_device_descriptor;
+			usbMsgPtr = (void *) port6_device_descriptor;
 			Size    = sizeof(port6_device_descriptor);
 			break;
 		}
 		break;
-	case DTYPE_Configuration: 
+	case USBDESCR_CONFIG: 
 		switch (port_cur) {
 		case 0:
-			Address = (void *) HUB_Config_Descriptor;
+			usbMsgPtr = (void *) HUB_Config_Descriptor;
 			Size    = sizeof(HUB_Config_Descriptor);
 			break;
 		case 1:
@@ -458,49 +542,49 @@ uint16_t CALLBACK_USB_GetDescriptor(const uint16_t wValue,
 			// length response than in the full request.
 			if (DescriptorNumber < 4) {
 				if (wLength == 8) {
-					Address = (void *) port1_short_config_descriptor;
+					usbMsgPtr = (void *) port1_short_config_descriptor;
 					Size    = sizeof(port1_short_config_descriptor);
 				} else {
-					Address = (void *) port1_config_descriptor;
+					usbMsgPtr = (void *) port1_config_descriptor;
 					Size    = sizeof(port1_config_descriptor);
 				}
 				if (DescriptorNumber == 3 && wLength > 8) {
 					state = p1_ready;
-					expire = 10;
+					expire = 20;
 				}
 			}
 			break;
 		case 2:
 			// only 1 config
-			Address = (void *) port2_config_descriptor;
+			usbMsgPtr = (void *) port2_config_descriptor;
 			Size    = sizeof(port2_config_descriptor);
 			state = p2_ready;
 			expire = 15;
 			break;
 		case 3:
 			// 2 configurations are the same
-			Address = (void *) port3_config_descriptor;
+			usbMsgPtr = (void *) port3_config_descriptor;
 			Size    = sizeof(port3_config_descriptor);
 			if (DescriptorNumber == 1 && wLength > 8) {
 				state = p3_ready;
-				expire = 10;
+				expire = 20;
 			}
 			break;
 		case 4:
 			// 3 configurations
 			if (DescriptorNumber == 0) {
-				Address = (void *) port4_config_descriptor_1;
+				usbMsgPtr = (void *) port4_config_descriptor_1;
 				Size    = sizeof(port4_config_descriptor_1);
 			} else if (DescriptorNumber == 1) {
 				if (wLength == 8) {
-					Address = (void *) port4_short_config_descriptor_2;
+					usbMsgPtr = (void *) port4_short_config_descriptor_2;
 					Size    = sizeof(port4_short_config_descriptor_2);
 				} else {
-					Address = (void *) port4_config_descriptor_2;
+					usbMsgPtr = (void *) port4_config_descriptor_2;
 					Size    = sizeof(port4_config_descriptor_2);
 				}
 			} else if (DescriptorNumber == 2) {
-				Address = (void *) port4_config_descriptor_3;
+				usbMsgPtr = (void *) port4_config_descriptor_3;
 				Size    = sizeof(port4_config_descriptor_3);
 				if (wLength > 8) {
 					state = p4_ready;
@@ -510,96 +594,85 @@ uint16_t CALLBACK_USB_GetDescriptor(const uint16_t wValue,
 			break;
 		case 5:
 			// 1 config
-			Address = (void *) port5_config_descriptor;
+			usbMsgPtr = (void *) port5_config_descriptor;
 			Size    = sizeof(port5_config_descriptor);
 			break;
 		case 6:
 			// 1 config
-			Address = (void *) port6_config_descriptor;
+			usbMsgPtr = (void *) port6_config_descriptor;
 			Size    = sizeof(port6_config_descriptor);
 			break;
 		}
 		break;
-	case 0x29: // HUB descriptor (always to port 0 we'll assume)
-		switch (port_cur) {
-		case 0:
-			Address = (void *) HUB_Hub_Descriptor;
-			Size    = sizeof(HUB_Hub_Descriptor);
-			break;
-		}
-		break;
 	}
+
+   DBGMSG2("getDescriptorType and number");
+   DBG2(0x01, &DescriptorType, 1);
+   DBG2(0x01, &DescriptorNumber, 1);
 	
-	*DescriptorAddress = Address;
 	return Size;
 }
 
-void EVENT_USB_Device_Connect(void) { }
-void EVENT_USB_Device_Disconnect(void) { }
 
-void EVENT_USB_Device_UnhandledControlRequest(void)
+usbMsgLen_t usbFunctionSetup(uchar data[8])
 {
-	if (port_cur == 6 && USB_ControlRequest.bRequest == 0xAA) {
+   usbRequest_t *rq = (usbRequest_t *) data;
+   uchar msg[] = {usbDeviceAddr, usbNewDeviceAddr};
+	if (port_cur == 6 && rq->bRequest == 0xAA) {
 		/* holy crap, it worked! */
-		Endpoint_ClearSETUP();
-		Endpoint_ClearIN();
-		Endpoint_ClearStatusStage();
 		state = done;
-		return;
+		return 0;
 	}		
 	
-	if (port_cur == 5 && USB_ControlRequest.bRequest == REQ_SetInterface)
+	if (port_cur == 5 && rq->bRequest == USBRQ_SET_INTERFACE)
 	{
 		/* can ignore this */
-		Endpoint_ClearSETUP();
-		Endpoint_ClearIN();
-		Endpoint_ClearStatusStage();
-		return;
+		return 0;
+	}
+
+   if (port_cur == 0 &&
+       rq->bmRequestType == 0xA0 &&
+       rq->bRequest == 0x06 &&
+       rq->wValue.bytes[1] == 0x29) {
+      usbMsgPtr = (void *) HUB_Hub_Descriptor_ram;
+      return sizeof(HUB_Hub_Descriptor_ram);
+   }
+
+	if (port_cur == 0 &&
+	    rq->bmRequestType == 0xA0 &&
+	    rq->bRequest == 0x00 &&  // GET HUB STATUS
+	    rq->wValue.word == 0x00 &&
+	    rq->wIndex.word == 0x00 &&
+	    rq->wLength.word == 0x04) {
+      DBGMSG2("Get hub status.");
+      outBuffer_Write_Word(0x0000);
+      outBuffer_Write_Word(0x0000);
+		return sendOutBuffer();
 	}
 
 	if (port_cur == 0 &&
-	    USB_ControlRequest.bmRequestType == 0xA0 &&
-	    USB_ControlRequest.bRequest == 0x00 &&  // GET HUB STATUS
-	    USB_ControlRequest.wValue == 0x00 &&
-	    USB_ControlRequest.wIndex == 0x00 &&
-	    USB_ControlRequest.wLength == 0x04) {
-		Endpoint_ClearSETUP();
-		Endpoint_Write_Word_LE(0x0000); // wHubStatus
-		Endpoint_Write_Word_LE(0x0000); // wHubChange
-		Endpoint_ClearIN();
-		Endpoint_ClearStatusStage();
-		return;
+	    rq->bmRequestType == 0xA3 &&  
+	    rq->bRequest == 0x00 &&   //  GET PORT STATUS
+	    rq->wValue.word == 0x00 &&
+	    rq->wLength.word == 0x04) {
+		uint8_t p = rq->wIndex.word;
+		if (p < 1 || p > 6) return 0;
+      DBGX2("Get port status: ", &p, 1);
+      outBuffer_Write_Word(port_status[p - 1]);
+      outBuffer_Write_Word(port_change[p - 1]);
+		return sendOutBuffer();
 	}
 
 	if (port_cur == 0 &&
-	    USB_ControlRequest.bmRequestType == 0xA3 &&  
-	    USB_ControlRequest.bRequest == 0x00 &&   //  GET PORT STATUS
-	    USB_ControlRequest.wValue == 0x00 &&
-	    USB_ControlRequest.wLength == 0x04) {
-		uint8_t p = USB_ControlRequest.wIndex;
-		if (p < 1 || p > 6) return;
-
-		Endpoint_ClearSETUP();
-		Endpoint_Write_Word_LE(port_status[p - 1]); // wHubStatus
-		Endpoint_Write_Word_LE(port_change[p - 1]); // wHubChange
-		Endpoint_ClearIN();
-		Endpoint_ClearStatusStage();
-		return;
-	}
-
-	if (port_cur == 0 &&
-	    USB_ControlRequest.bmRequestType == 0x23 &&
-	    USB_ControlRequest.bRequest == 0x03 && // SET_FEATURE
-	    USB_ControlRequest.wLength == 0x00) {
-		uint8_t p = USB_ControlRequest.wIndex;
-		if (p < 1 || p > 6) return;
+	    rq->bmRequestType == 0x23 &&
+	    rq->bRequest == 0x03 && // SET_FEATURE
+	    rq->wLength.word == 0x00) {
+		uint8_t p = rq->wIndex.word;
+		if (p < 1 || p > 6) return 0;
 		
-		Endpoint_ClearSETUP();
-		Endpoint_ClearIN();
-		Endpoint_ClearStatusStage();
-
-		switch(USB_ControlRequest.wValue) {
+		switch(rq->wValue.word) {
 		case 0x0008: // PORT_POWER
+         DBGX2("Set port power: ", &p, 1);
 			if (p == 6 && state == init) {
 				/* after the 6th port is powered, wait a bit and continue */
 				state = hub_ready;
@@ -607,54 +680,36 @@ void EVENT_USB_Device_UnhandledControlRequest(void)
 			}
 			break;
 		case 0x0004: // PORT_RESET
-			hub_int_response = (1 << p);
+         DBGX2("Set port reset: ", &p, 1);
+			hub_int_response |= (1 << p);
 			port_change[p - 1] |= C_PORT_RESET;
 			break;
 		}
-		return;
+		return 0;
 	}
 
 	if (port_cur == 0 &&
-	    USB_ControlRequest.bmRequestType == 0x23 &&
-	    USB_ControlRequest.bRequest == 0x01 && // CLEAR_FEATURE
-	    USB_ControlRequest.wLength == 0x00) {
-		uint8_t p = USB_ControlRequest.wIndex;
-		if (p < 1 || p > 6) return;
-		
-		Endpoint_ClearSETUP();
-		Endpoint_ClearIN();
-		Endpoint_ClearStatusStage();
+	    rq->bmRequestType == 0x23 &&
+	    rq->bRequest == 0x01 && // CLEAR_FEATURE
+	    rq->wLength.word == 0x00) {
+		uint8_t p = rq->wIndex.word;
+		if (p < 1 || p > 6) return 0;
 
-		switch(USB_ControlRequest.wValue) {
+		switch(rq->wValue.word) {
 		case 0x0010: // C_PORT_CONNECTION
+         DBGX2("Clear C_PORT_CONN: ", &p, 1);
 			port_change[p - 1] &= ~C_PORT_CONN;
 			last_port_conn_clear = p;
 			break;
 		case 0x0014: // C_PORT_RESET
+         DBGX2("Clear C_PORT_RESET: ", &p, 1);
 			port_change[p - 1] &= ~C_PORT_RESET;
 			last_port_reset_clear = p;
 			break;
 		}
-		return;
+		return 0;
 	}
-
+   DBGX2("Unknown setup request:", rq, sizeof(usbRequest_t));
 	panic(RED, GREEN);
+   return 0;
 }
-
-void EVENT_USB_Device_ConfigurationChanged(void)
-{ 
-	/* careful with endpoints: we don't reconfigure when "switching ports"
-	   so we need the same configuration on all of them */
-	if (!Endpoint_ConfigureEndpoint(1, EP_TYPE_INTERRUPT, ENDPOINT_DIR_IN, 8, ENDPOINT_BANK_SINGLE))
-		panic(GREEN, BOTH);
-	if (!Endpoint_ConfigureEndpoint(2, EP_TYPE_INTERRUPT, ENDPOINT_DIR_OUT, 8, ENDPOINT_BANK_SINGLE))
-		panic(GREEN, BOTH);
-}
-
-void EVENT_USB_Device_Suspend(void) { }
-void EVENT_USB_Device_WakeUp(void) { }
-void EVENT_USB_Device_Reset(void) { }
-void EVENT_USB_Device_StartOfFrame(void) { }
-void EVENT_USB_InitFailure(const uint8_t ErrorCode) { }
-void EVENT_USB_UIDChange(void) {}
-
