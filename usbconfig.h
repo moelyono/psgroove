@@ -330,21 +330,4 @@ section at the end of this file).
 #define USB_CFG_DESCR_PROPS_HID_REPORT              0
 #define USB_CFG_DESCR_PROPS_UNKNOWN                 USB_PROP_IS_DYNAMIC
 
-/* ----------------------- Optional MCU Description ------------------------ */
-
-/* The following configurations have working defaults in usbdrv.h. You
- * usually don't need to set them explicitly. Only if you want to run
- * the driver on a device which is not yet supported or with a compiler
- * which is not fully supported (such as IAR C) or if you use a differnt
- * interrupt than INT0, you may have to define some of these.
- */
-/* #define USB_INTR_CFG            MCUCR */
-/* #define USB_INTR_CFG_SET        ((1 << ISC00) | (1 << ISC01)) */
-/* #define USB_INTR_CFG_CLR        0 */
-/* #define USB_INTR_ENABLE         GIMSK */
-#define USB_INTR_ENABLE_BIT     INT2 
-/* #define USB_INTR_PENDING        GIFR */
-#define USB_INTR_PENDING_BIT    INTF2 
-#define USB_INTR_VECTOR         INT2_vect
-
 #endif /* __usbconfig_h_included__ */

@@ -7,6 +7,7 @@ non-usb ATMega chips. (Like those used in arduinos.)
 It should work on:
 
 - ATMega1280
+- ATMega168
 
 ... and maybe more.
 
@@ -26,10 +27,15 @@ In particular, update the MCU, BOARD, and F_CPU lines.  Suggested values:
 
 Arduino Mega
 
-   MCU = atmega1280
-   BOARD = ArduinoMega
-   F_CLOCK = 16000000
+    MCU = atmega1280
+    BOARD = ArduinoMega
+    F_CLOCK = 16000000
 
+Arduino Duemilanove
+
+    MCU = atmega168
+    BOARD = ArduinoDuemilanove
+    F_CLOCK = 16000000
 
 Board-specific notes
 --------------------
@@ -46,15 +52,23 @@ On Windows, WinAVR should do the trick.
 
 Programming
 -----------
-Now program psgroove.hex into your board and you're ready to go.  For
-the AT90USBKEY and other chips with a DFU bootloader preinstalled, you
-can get the dfu-programmer tool, put your board in programming mode,
-and run
-  
-    make dfu
 
-For the Teensy boards, you probably have to use the [Teensy
-Loader](http://www.pjrc.com/teensy/loader.html) software.
+To program, just edit the programming options section of the Makefile
+to match your particular board programming setup. You will need avrdude
+on your path. Then do:
+
+    make program
+    
+For arduino users, you can get some hints as to how to configure the
+programming options by checking what the arduino IDE does.
+
+1. Edit your arduino preferences file setting upload.verbose to true.
+2. Open the arduino ide
+3. Create an empty sketch
+4. Upload to your board, and check the output.
+
+From the IDE's output you should be able to determine what port to use
+and other useful information about configuring the options.
 
 Using
 -----
