@@ -1,4 +1,4 @@
-# Hey Emacs, this is a -*- makefile -*-
+
 #----------------------------------------------------------------------------
 # WinAVR Makefile Template written by Eric B. Weddington, Jörg Wunsch, et al.
 #  >> Modified for use with the LUFA project. <<
@@ -241,8 +241,7 @@ CPPFLAGS += $(patsubst %,-I%,$(EXTRAINCDIRS))
 #             files -- see avr-libc docs [FIXME: not yet described there]
 #  -listing-cont-lines: Sets the maximum number of continuation lines of hex 
 #       dump that will be displayed for a given single line of source input.
-ASFLAGS = $(ADEFS) -Wa,-adhlns=$(<:%.S=$(OBJDIR)/%.lst),-gstabs,--listing-cont-lines=100
-
+ASFLAGS = $(ADEFS) -Wa,-adhlns=$(<:%.S=$(OBJDIR)/%.lst),-gstabs,--listing-cont-lines=100 $(patsubst %,-I%,$(EXTRAINCDIRS))
 
 #---------------- Library Options ----------------
 # Minimalistic printf version
@@ -659,8 +658,9 @@ clean_list :
 	$(REMOVE) $(TARGET).map
 	$(REMOVE) $(TARGET).sym
 	$(REMOVE) $(TARGET).lss
-	$(REMOVE) $(SRC:%.c=$(OBJDIR)/%.o)
 	$(REMOVE) $(SRC:%.c=$(OBJDIR)/%.lst)
+	$(REMOVE) $(SRC:%.c=$(OBJDIR)/%.o)
+	$(REMOVE) $(ASRC:%.S=$(OBJDIR)/%.o)
 	$(REMOVE) $(SRC:.c=.s)
 	$(REMOVE) $(SRC:.c=.d)
 	$(REMOVE) $(SRC:.c=.i)
