@@ -1,0 +1,1 @@
+hardware\tools\avr\bin\avrdude -Chardware\tools\avr\etc\avrdude.conf -patmega1280 -cstk500v1 -P\\.\COM3 -b57600 -D -Uflash:w:psgroove.hex:i
