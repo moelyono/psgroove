@@ -8,6 +8,7 @@ It should work on:
 
 - ATMega1280
 - ATMega168
+- ATMega328p
 
 ... and maybe more.
 
@@ -31,9 +32,15 @@ Arduino Mega
     BOARD = ArduinoMega
     F_CLOCK = 16000000
 
-Arduino Duemilanove
+Arduino Duemilanove w/ atmega168
 
     MCU = atmega168
+    BOARD = ArduinoDuemilanove
+    F_CLOCK = 16000000
+
+Arduino Duemilanove w/ atmega328p
+
+    MCU = atmega328p
     BOARD = ArduinoDuemilanove
     F_CLOCK = 16000000
 
