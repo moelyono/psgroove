@@ -19,6 +19,10 @@
 
 #include "PL3/shellcode_egghunt.h"
 
+// For whatever reason PL3 is getting defined to "3" which is causing subsequent
+// macros to screw up. Just doing an undef here as a hack until I can find where
+// the rogue PL3 define is coming from.
+#undef PL3
 
 #define MAGIC_NUMBER		0x50, 0x53, 0x47, 0x72, 0x6f, 0x6f, 0x76, 0x65
 
