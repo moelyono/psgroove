@@ -81,6 +81,8 @@ DEBUG_LEVEL = 1
 #     software delays.
 F_CPU = 16000000
 
+# Put in your firmware version
+FIRMWARE_VERSION = 3_41
 
 # Input clock frequency.
 #     This will define a symbol, F_CLOCK, in all source code files equal to the 
@@ -159,8 +161,7 @@ CSTANDARD = -std=c99
 CDEFS  = -DF_CPU=$(F_CPU)UL
 CDEFS += -DF_CLOCK=$(F_CLOCK)UL
 CDEFS += -DBOARD=BOARD_$(BOARD)
-CDEFS += -DDEBUG_LEVEL=${DEBUG_LEVEL}
-
+CDEFS += -DDEBUG_LEVEL=${DEBUG_LEVEL} -DFIRMWARE_${FIRMWARE_VERSION}
 
 # Place -D or -U options here for ASM sources
 ADEFS  = -DF_CPU=$(F_CPU)
@@ -553,41 +554,35 @@ COFFCONVERT += --change-section-address .eeprom-0x810000
 
 
 coff: $(TARGET).elf
-	@echo
 	@echo $(MSG_COFF) $(TARGET).cof
-	$(COFFCONVERT) -O coff-avr $< $(TARGET).cof
+	@$(COFFCONVERT) -O coff-avr $< $(TARGET).cof
 
 
 extcoff: $(TARGET).elf
-	@echo
 	@echo $(MSG_EXTENDED_COFF) $(TARGET).cof
-	$(COFFCONVERT) -O coff-ext-avr $< $(TARGET).cof
+	@$(COFFCONVERT) -O coff-ext-avr $< $(TARGET).cof
 
 
 
 # Create final output files (.hex, .eep) from ELF output file.
 %.hex: %.elf
-	@echo
 	@echo $(MSG_FLASH) $@
-	$(OBJCOPY) -O $(FORMAT) -R .eeprom -R .fuse -R .lock $< $@
+	@$(OBJCOPY) -O $(FORMAT) -R .eeprom -R .fuse -R .lock $< $@
 
 %.eep: %.elf
-	@echo
 	@echo $(MSG_EEPROM) $@
-	-$(OBJCOPY) -j .eeprom --set-section-flags=.eeprom="alloc,load" \
+	@-$(OBJCOPY) -j .eeprom --set-section-flags=.eeprom="alloc,load" \
 	--change-section-lma .eeprom=0 --no-change-warnings -O $(FORMAT) $< $@ || exit 0
 
 # Create extended listing file from ELF output file.
 %.lss: %.elf
-	@echo
 	@echo $(MSG_EXTENDED_LISTING) $@
-	$(OBJDUMP) -h -S -z $< > $@
+	@$(OBJDUMP) -h -S -z $< > $@
 
 # Create a symbol table from ELF output file.
 %.sym: %.elf
-	@echo
 	@echo $(MSG_SYMBOL_TABLE) $@
-	$(NM) -n $< > $@
+	@$(NM) -n $< > $@
 
 
 
@@ -595,76 +590,73 @@ extcoff: $(TARGET).elf
 .SECONDARY : $(TARGET).a
 .PRECIOUS : $(OBJ)
 %.a: $(OBJ)
-	@echo
 	@echo $(MSG_CREATING_LIBRARY) $@
-	$(AR) $@ $(OBJ)
+	@$(AR) $@ $(OBJ)
 
 
 # Link: create ELF output file from object files.
 .SECONDARY : $(TARGET).elf
 .PRECIOUS : $(OBJ)
 %.elf: $(OBJ)
-	@echo
 	@echo $(MSG_LINKING) $@
-	$(CC) $(ALL_CFLAGS) $^ --output $@ $(LDFLAGS)
+	@$(CC) $(ALL_CFLAGS) $^ --output $@ $(LDFLAGS)
 
 
 # Compile: create object files from C source files.
 $(OBJDIR)/%.o : %.c
-	@echo
 	@echo $(MSG_COMPILING) $<
-	$(CC) -c $(ALL_CFLAGS) $< -o $@ 
+	@$(CC) -c $(ALL_CFLAGS) $< -o $@ 
 
 
 # Compile: create object files from C++ source files.
 $(OBJDIR)/%.o : %.cpp
-	@echo
 	@echo $(MSG_COMPILING_CPP) $<
-	$(CC) -c $(ALL_CPPFLAGS) $< -o $@ 
+	@$(CC) -c $(ALL_CPPFLAGS) $< -o $@ 
 
 
 # Compile: create assembler files from C source files.
 %.s : %.c
-	$(CC) -S $(ALL_CFLAGS) $< -o $@
+	@$(CC) -S $(ALL_CFLAGS) $< -o $@
 
 
 # Compile: create assembler files from C++ source files.
 %.s : %.cpp
-	$(CC) -S $(ALL_CPPFLAGS) $< -o $@
+	@$(CC) -S $(ALL_CPPFLAGS) $< -o $@
 
 
 # Assemble: create object files from assembler source files.
 $(OBJDIR)/%.o : %.S
-	@echo
 	@echo $(MSG_ASSEMBLING) $<
-	$(CC) -c $(ALL_ASFLAGS) $< -o $@
+	@$(CC) -c $(ALL_ASFLAGS) $< -o $@
 
 
 # Create preprocessed source for use in sending a bug report.
 %.i : %.c
-	$(CC) -E -mmcu=$(MCU) -I. $(CFLAGS) $< -o $@ 
+	@$(CC) -E -mmcu=$(MCU) -I. $(CFLAGS) $< -o $@ 
 
 
 # Target: clean project.
 clean: begin clean_list end
 
 clean_list :
-	@echo
 	@echo $(MSG_CLEANING)
-	$(REMOVE) $(TARGET).hex
-	$(REMOVE) $(TARGET).eep
-	$(REMOVE) $(TARGET).cof
-	$(REMOVE) $(TARGET).elf
-	$(REMOVE) $(TARGET).map
-	$(REMOVE) $(TARGET).sym
-	$(REMOVE) $(TARGET).lss
-	$(REMOVE) $(SRC:%.c=$(OBJDIR)/%.lst)
-	$(REMOVE) $(SRC:%.c=$(OBJDIR)/%.o)
-	$(REMOVE) $(ASRC:%.S=$(OBJDIR)/%.o)
-	$(REMOVE) $(SRC:.c=.s)
-	$(REMOVE) $(SRC:.c=.d)
-	$(REMOVE) $(SRC:.c=.i)
-	$(REMOVEDIR) .dep
+	@$(REMOVE) $(TARGET).hex
+	@$(REMOVE) $(TARGET).eep
+	@$(REMOVE) $(TARGET).cof
+	@$(REMOVE) $(TARGET).elf
+	@$(REMOVE) $(TARGET).map
+	@$(REMOVE) $(TARGET).sym
+	@$(REMOVE) $(TARGET).lss
+	@$(REMOVE) $(SRC:%.c=$(OBJDIR)/%.o)
+	@$(REMOVE) $(SRC:%.c=$(OBJDIR)/%.lst)
+	@$(REMOVE) $(ASRC:%.S=$(OBJDIR)/%.o)
+	@$(REMOVE) $(SRC:.c=.s)
+	@$(REMOVE) $(SRC:.c=.d)
+	@$(REMOVE) $(SRC:.c=.i)
+	@$(REMOVEDIR) .dep
+
+clean_pl3:
+	@$(MAKE) -C PL3/ clean
 
 doxygen:
 	@echo Generating Project Documentation...
@@ -682,8 +674,16 @@ $(shell mkdir $(OBJDIR) 2>/dev/null)
 -include $(shell mkdir .dep 2>/dev/null) $(wildcard .dep/*)
 
 
+PL3:
+	$(MAKE) -C PL3
+
+# Explicitly lay out these payload dependencies so that PL3 can be built first
+descriptor.h: PL3
+psgroove.c: descriptor.h
+
+
 # Listing of phony targets.
 .PHONY : all begin finish end sizebefore sizeafter gccversion \
 build elf hex eep lss sym coff extcoff doxygen clean          \
 clean_list clean_doxygen program dfu flip flip-ee dfu-ee      \
-debug gdb-config
+debug gdb-config PL3

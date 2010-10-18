@@ -75,8 +75,6 @@ enum {
 	p4_disconnected,
 	p1_wait_disconnect,
 	p1_disconnected,
-	p6_wait_reset,
-	p6_wait_enumerate,
 	done,
 } state = init;
 
@@ -117,6 +115,7 @@ void switch_port(uchar port)
 }
 
 volatile uint8_t expire = 0; /* counts down every 10 milliseconds */
+volatile uint8_t expire_led = 0; /* counts down every 10 milliseconds */
 ISR(TIMER1_OVF_vect) 
 { 
 	uint16_t rate = (uint16_t) -(F_CPU / 64 / 100);
@@ -182,12 +181,6 @@ void HUB_Task(void)
 	}
 }
 
-const uint8_t PROGMEM jig_response[64] = {
-	0x80, 0x00, 0x00, 0x00, 0x00, 0x3d, 0xee, 0x78, 0x80, 0x00, 0x00, 0x00, 0x00, 0x3d, 0xee, 0x88,
-	0x80, 0x00, 0x00, 0x00, 0x00, 0x33, 0xe7, 0x20, 0xe8, 0x83, 0xff, 0xf0, 0xe8, 0x63, 0xff, 0xf8,
-	0xe8, 0xa3, 0x00, 0x18, 0x38, 0x63, 0x10, 0x00, 0x7c, 0x04, 0x28, 0x00, 0x40, 0x82, 0xff, 0xf4,
-	0x38, 0xc3, 0xf0, 0x20, 0x7c, 0xc9, 0x03, 0xa6, 0x4e, 0x80, 0x04, 0x20, 0x04, 0x00, 0x00, 0x00,
-};
 
 // Junk the jig challenge.
 uchar usbFunctionWrite(uchar *data, uchar len)
@@ -441,34 +434,9 @@ int main(void)
 
 		if (state == p1_wait_disconnect && last_port_conn_clear == 1)
 		{
-         DBG1(0x00, "\x20", 1);
-         setLed(RED);
-			state = p1_disconnected;
-			expire = 20;
-		}
-
-		// connect 6
-		if (state == p1_disconnected && expire == 0)
-		{
-         DBG1(0x00, "\x21", 1);
-         setLed(NONE);
-			switch_port(0);
-			connect_port(6);
-			state = p6_wait_reset;
-		}
-
-		if (state == p6_wait_reset && last_port_reset_clear == 6)
-		{
-         DBG1(0x00, "\x22", 1);
-         setLed(RED);
-			switch_port(6);
-			state = p6_wait_enumerate;
-		}
-
-		// done
-		if (state == done)
-		{
+			state = done;
 			setLed(GREEN);
+			usbDeviceDisconnect();
 		}
 	}
 }
@@ -509,10 +477,6 @@ usbMsgLen_t usbFunctionDescriptor(struct usbRequest *rq)
 			usbMsgPtr = (void *) port5_device_descriptor;
 			Size    = sizeof(port5_device_descriptor);
 			break;
-		case 6:
-			usbMsgPtr = (void *) port6_device_descriptor;
-			Size    = sizeof(port6_device_descriptor);
-			break;
 		}
 		break;
 	case USBDESCR_CONFIG: 
@@ -525,15 +489,16 @@ usbMsgLen_t usbFunctionDescriptor(struct usbRequest *rq)
 			// 4 configurations are the same.
 			// For the initial 8-byte request, we give a different
 			// length response than in the full request.
-			if (DescriptorNumber < 4) {
+			if (DescriptorNumber < PORT1_NUM_CONFIGS) {
 				if (wLength == 8) {
 					usbMsgPtr = (void *) port1_short_config_descriptor;
 					Size    = sizeof(port1_short_config_descriptor);
 				} else {
 					usbMsgPtr = (void *) port1_config_descriptor;
-					Size    = sizeof(port1_config_descriptor);
+					Size    = PORT1_DESC_LEN;
 				}
-				if (DescriptorNumber == 3 && wLength > 8) {
+				if (DescriptorNumber == (PORT1_NUM_CONFIGS - 1) &&
+                                    wLength > 8) {
 					state = p1_ready;
 					expire = 20;
 				}
@@ -582,11 +547,6 @@ usbMsgLen_t usbFunctionDescriptor(struct usbRequest *rq)
 			usbMsgPtr = (void *) port5_config_descriptor;
 			Size    = sizeof(port5_config_descriptor);
 			break;
-		case 6:
-			// 1 config
-			usbMsgPtr = (void *) port6_config_descriptor;
-			Size    = sizeof(port6_config_descriptor);
-			break;
 		}
 		break;
 	}
@@ -602,12 +562,6 @@ usbMsgLen_t usbFunctionDescriptor(struct usbRequest *rq)
 usbMsgLen_t usbFunctionSetup(uchar data[8])
 {
    usbRequest_t *rq = (usbRequest_t *) data;
-   uchar msg[] = {usbDeviceAddr, usbNewDeviceAddr};
-	if (port_cur == 6 && rq->bRequest == 0xAA) {
-		/* holy crap, it worked! */
-		state = done;
-		return 0;
-	}		
 	
 	if (port_cur == 5 && rq->bRequest == USBRQ_SET_INTERFACE)
 	{
