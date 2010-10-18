@@ -18,18 +18,18 @@ void interruptWrite_Word(uint16_t word)
    }
 }
 
-void sendInterruptBuffer()
+void sendInterruptBuffer(void)
 {
    usbSetInterrupt(interruptBuffer, interruptBufferIdx);
    interruptBufferIdx = 0;
 }
 
-void resetDataToggle()
+void resetDataToggle(void)
 {
    usbTxStatus1.buffer[0] = USB_INITIAL_DATATOKEN;
 }
 
-void pUsbSetInterrupt(uchar *pData, uchar len)
+void pUsbSetInterrupt(const uchar *pData, uchar len)
 {
    memcpy_P(interruptBuffer, pData, len);
    interruptBufferIdx = len;
@@ -55,7 +55,7 @@ void outBuffer_Write_Word(uint16_t word)
    }
 }
 
-usbMsgLen_t sendOutBuffer()
+usbMsgLen_t sendOutBuffer(void)
 {
    usbMsgLen_t len = outBufferLen;
    outBufferLen = 0;

@@ -97,8 +97,6 @@ extern uchar usbTxLen;
 
 void usbSetAddr(uchar addr)
 {
-   uchar msg[] = {port_cur, addr};
-   DBG2(0x03, msg, 2);
    if(port_addr[port_cur] == 0)
       port_addr[port_cur] = addr;
 }
@@ -125,7 +123,7 @@ ISR(TIMER1_OVF_vect)
 		expire--;
 }
 
-void SetupLEDs()
+void SetupLEDs(void)
 {
    GREEN_DDR |= (1 << GREEN_BIT);
    RED_DDR |= (1 << RED_BIT);
@@ -193,7 +191,7 @@ uchar usbFunctionWrite(uchar *data, uchar len)
       DBGMSG2("Finished challenge.");
       return 0;
    } else {
-      return USB_NO_MSG;
+      return 1;
    }
 }
 
@@ -259,7 +257,7 @@ int main(void)
 		// connect 1
 		if (state == hub_ready && expire == 0)
 		{
-         DBG1(0x00, "\x1", 1);
+         DBGMSG1("Step 1");
          setLed(NONE);
 			connect_port(1);
 			state = p1_wait_reset;
@@ -267,7 +265,7 @@ int main(void)
 		
 		if (state == p1_wait_reset && last_port_reset_clear == 1)
 		{
-         DBG1(0x00, "\x2", 1);
+         DBGMSG1("Step 2");
          setLed(RED);
 			switch_port(1);
 			state = p1_wait_enumerate;
@@ -276,7 +274,7 @@ int main(void)
 		// connect 2
 		if (state == p1_ready && expire == 0)
 		{
-         DBG1(0x00, "\x3", 1);
+         DBGMSG1("Step 3");
          setLed(NONE);
 			switch_port(0);
 			connect_port(2);
@@ -285,7 +283,7 @@ int main(void)
 
 		if (state == p2_wait_reset && last_port_reset_clear == 2)
 		{
-         DBG1(0x00, "\x4", 1);
+         DBGMSG1("Step 4");
          setLed(RED);
 			switch_port(2);
 			state = p2_wait_enumerate;
@@ -294,7 +292,7 @@ int main(void)
 		// connect 3
 		if (state == p2_ready && expire == 0)
 		{
-         DBG1(0x00, "\x5", 1);
+         DBGMSG1("Step 5");
          setLed(NONE);
 			switch_port(0);
 			connect_port(3);
@@ -303,7 +301,7 @@ int main(void)
 
 		if (state == p3_wait_reset && last_port_reset_clear == 3)
 		{
-         DBG1(0x00, "\x6", 1);
+         DBGMSG1("Step 6");
          setLed(RED);
 			switch_port(3);
 			state = p3_wait_enumerate;
@@ -312,7 +310,7 @@ int main(void)
 		// disconnect 2
 		if (state == p3_ready && expire == 0)
 		{
-         DBG1(0x00, "\x7", 1);
+         DBGMSG1("Step 7");
          setLed(NONE);
 			switch_port(0);
 			disconnect_port(2);
@@ -321,7 +319,7 @@ int main(void)
 
 		if (state == p2_wait_disconnect && last_port_conn_clear == 2)
 		{
-         DBG1(0x00, "\x8", 1);
+         DBGMSG1("Step 8");
          setLed(RED);
 			state = p4_wait_connect;
 			expire = 15;
@@ -330,7 +328,7 @@ int main(void)
 		// connect 4
 		if (state == p4_wait_connect && expire == 0) 
 		{
-         DBG1(0x00, "\x9", 1);
+         DBGMSG1("Step 9");
          setLed(NONE);
 			connect_port(4);
 			state = p4_wait_reset;
@@ -338,7 +336,7 @@ int main(void)
 
 		if (state == p4_wait_reset && last_port_reset_clear == 4)
 		{
-         DBG1(0x00, "\x10", 1);
+         DBGMSG1("Step 10");
          setLed(RED);
 			switch_port(4);
 			state = p4_wait_enumerate;
@@ -347,7 +345,7 @@ int main(void)
 		// connect 5
 		if (state == p4_ready && expire == 0)
 		{
-         DBG1(0x00, "\x11", 1);
+         DBGMSG1("Step 11");
          setLed(NONE);
 			switch_port(0);
 			/* When first connecting port 5, we need to
@@ -360,7 +358,7 @@ int main(void)
 
 		if (state == p5_wait_reset && last_port_reset_clear == 5)
 		{
-         DBG1(0x00, "\x12", 1);
+         DBGMSG1("Step 12");
          setLed(RED);
 			switch_port(5);
 			state = p5_wait_enumerate;
@@ -369,7 +367,7 @@ int main(void)
 		// disconnect 3
 		if (state == p5_responded && expire == 0)
 		{
-         DBG1(0x00, "\x13", 1);
+         DBGMSG1("Step 13");
          setLed(NONE);
 			switch_port(0);
 			/* Need wrong data toggle again */
@@ -380,7 +378,7 @@ int main(void)
 
 		if (state == p3_wait_disconnect && last_port_conn_clear == 3)
 		{
-         DBG1(0x00, "\x14", 1);
+         DBGMSG1("Step 14");
          setLed(RED);
 			state = p3_disconnected;
 			expire = 45;
@@ -389,7 +387,7 @@ int main(void)
 		// disconnect 5
 		if (state == p3_disconnected && expire == 0)
 		{
-         DBG1(0x00, "\x15", 1);
+         DBGMSG1("Step 15");
          setLed(NONE);
 			switch_port(0);
 			disconnect_port(5);
@@ -398,7 +396,7 @@ int main(void)
 
 		if (state == p5_wait_disconnect && last_port_conn_clear == 5)
 		{
-         DBG1(0x00, "\x16", 1);
+         DBGMSG1("Step 16");
          setLed(RED);
 			state = p5_disconnected;
 			expire = 20;
@@ -407,7 +405,7 @@ int main(void)
 		// disconnect 4
 		if (state == p5_disconnected && expire == 0)
 		{
-         DBG1(0x00, "\x17", 1);
+         DBGMSG1("Step 17");
          setLed(NONE);
 			switch_port(0);
 			disconnect_port(4);
@@ -416,7 +414,7 @@ int main(void)
 
 		if (state == p4_wait_disconnect && last_port_conn_clear == 4)
 		{
-         DBG1(0x00, "\x18", 1);
+         DBGMSG1("Step 18");
          setLed(RED);
 			state = p4_disconnected;
 			expire = 20;
@@ -425,7 +423,7 @@ int main(void)
 		// disconnect 1
 		if (state == p4_disconnected && expire == 0)
 		{
-         DBG1(0x00, "\x19", 1);
+         DBGMSG1("Step 19");
          setLed(NONE);
 			switch_port(0);
 			disconnect_port(1);
@@ -434,6 +432,7 @@ int main(void)
 
 		if (state == p1_wait_disconnect && last_port_conn_clear == 1)
 		{
+         DBGMSG1("Done!");
 			state = done;
 			setLed(GREEN);
 			usbDeviceDisconnect();

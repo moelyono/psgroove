@@ -19,7 +19,7 @@ static void uartPutc(char c)
     ODDBG_UDR = c;
 }
 
-static void uartPuts(uchar *msg)
+static void uartPuts(char *msg)
 {
    uchar len = strlen(msg);
    while(len--) 
@@ -41,7 +41,7 @@ static void printHex(uchar c)
     uartPutc(hexAscii(c));
 }
 
-void    odDebug(uchar prefix, uchar *data, uchar len)
+void    odDebug(char prefix, uchar *data, uchar len)
 {
     printHex(prefix);
     uartPutc(':');
@@ -53,7 +53,7 @@ void    odDebug(uchar prefix, uchar *data, uchar len)
     uartPutc('\n');
 }
 
-void odDebugPrefixedHex(uchar *prefix, uchar *data, uchar len)
+void odDebugPrefixedHex(char *prefix, uchar *data, uchar len)
 {
    uartPuts(prefix);
    while(len--) {
@@ -64,7 +64,7 @@ void odDebugPrefixedHex(uchar *prefix, uchar *data, uchar len)
    uartPutc('\n');
 }
 
-void odDebugString(uchar *msg)
+void odDebugString(char *msg)
 {
    uartPuts(msg);
    uartPutc('\r');

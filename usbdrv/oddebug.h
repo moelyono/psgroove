@@ -69,8 +69,8 @@ the output and a memory block to dump in hex ('data' and 'len').
 /* ------------------------------------------------------------------------- */
 
 #if DEBUG_LEVEL > 0
-extern void odDebug(uchar prefix, uchar *data, uchar len);
-extern void odDebugString(uchar *msg);
+extern void odDebug(char prefix, uchar *data, uchar len);
+extern void odDebugString(char *msg);
 
 /* Try to find our control registers; ATMEL likes to rename these */
 
