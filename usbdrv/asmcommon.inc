@@ -68,12 +68,7 @@ se0:
     ldd     x2, y+1             ;[19] ADDR and 1 bit endpoint number
     lsl     x2                  ;[21] shift out 1 bit endpoint number
     cpse    x2, shift           ;[24]
-#if USB_PROMISC_MODE
-    sts     usbRxAddr, x2       ;[22] Save the address the packet was sent to
-    rjmp    gotSetupOrOut
-#else
     rjmp    ignorePacket        ;[25]
-#endif
 /* only compute endpoint number in x3 if required later */
 #if USB_CFG_HAVE_INTRIN_ENDPOINT || USB_CFG_IMPLEMENT_FN_WRITEOUT
     ldd     x3, y+2             ;[24] endpoint number + crc

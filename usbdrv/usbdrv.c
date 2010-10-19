@@ -29,9 +29,6 @@ uchar       usbConfiguration;   /* currently selected configuration. Administere
 volatile schar usbRxLen;        /* = 0; number of bytes in usbRxBuf; 0 means free, -1 for flow control */
 uchar       usbCurrentTok;      /* last token received or endpoint number for last OUT token if != 0 */
 uchar       usbRxToken;         /* token for data we received; or endpont number for last OUT */
-#if USB_PROMISC_MODE
-uchar       usbRxAddr;          /* Address the received packet was intended for. */
-#endif
 volatile uchar usbTxLen = USBPID_NAK;   /* number of bytes to transmit with next IN token or handshake token */
 uchar       usbTxBuf[USB_BUFSIZE];/* data to transmit with next IN, free if usbTxLen contains handshake token */
 #if USB_COUNT_SOF
@@ -422,9 +419,6 @@ skipMsgPtrAssignment:
     return len;
 }
 
-#if USB_PROMISC_MODE
-extern uchar acceptPacket(uchar addr);
-#endif
 /* ------------------------------------------------------------------------- */
 
 /* usbProcessRx() is called for every message received by the interrupt
@@ -442,12 +436,6 @@ usbRequest_t    *rq = (void *)data;
  */
     DBG2(0x10 + (usbRxToken & 0xf), data, len + 2); /* SETUP=1d, SETUP-DATA=11, OUTx=1x */
     USB_RX_USER_HOOK(data, len);
-#if USB_PROMISC_MODE
-    if(!acceptPacket(usbRxAddr)) {
-        usbRxLen = 0;
-        return;
-    }
-#endif
 #if USB_CFG_IMPLEMENT_FN_WRITEOUT
     if(usbRxToken < 0x10){  /* OUT to endpoint != 0: endpoint number in usbRxToken */
         usbFunctionWriteOut(data, len);

@@ -42,13 +42,6 @@ section at the end of this file).
 
 /* --------------------------- Functional Range ---------------------------- */
 
-#define USB_PROMISC_MODE                0
-/* Define to 1 to activate promiscuous mode. All packets for all addresses
- * will be passed into processing. A filtering method
- * uchar acceptPacket(uchar addr) is expected to be implemented if this
- * option is set. The method should simply examine the address, and
- * return non-zero to accept the packet for processing.
- */
 #define USB_CFG_HAVE_INTRIN_ENDPOINT    1
 /* Define this to 1 if you want to compile a version with two endpoints: The
  * default control endpoint 0 and an interrupt-in endpoint (any other endpoint
