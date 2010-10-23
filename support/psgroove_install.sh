@@ -2,20 +2,30 @@
 
 #####################################################
 # Change atmega1280 to your chip (e.g. atmega328p). #
-DEVICE=atmega1280
+DEVICE=atmega1280                                   #
+#####################################################
+
+#####################################################
+# Change to your particular board type              #
+BOARD=arduinomega                                   #
+#####################################################
+
+#####################################################
+# Change to the firmware version of your PS3        #
+FIRMWARE=3_41                                       #
 #####################################################
 
 #####################################################
 # Mac OSX Only. Set this to the location of your    #
 # Arduino.app.                                      #
-MAC_ARDUINO_LOCATION=/Applications
+MAC_ARDUINO_LOCATION=/Applications                  #
 #####################################################
 
 AVRDUDE=avrdude
 PROGRAMMER=stk500v1
 EXTRA_OPTS=-b57600
 PORT=/dev/ttyUSB0
-HEX_FILE=psgroove.hex
+HEX_FILE=psgroove_$BOARD\_$DEVICE\_16mhz_firmware_$FIRMWARE.hex
 PLATFORM=`uname`
 
 if [[ "$PLATFORM" == 'Darwin' ]]; then
@@ -43,5 +53,5 @@ else
    exit -1
 fi
 
-echo $AVRDUDE -p$DEVICE -P$PORT -c$PROGRAMMER $EXTRA_OPTS -U flash:w:$HEX_FILE
+$AVRDUDE -p$DEVICE -P$PORT -c$PROGRAMMER $EXTRA_OPTS -U flash:w:$HEX_FILE
 
