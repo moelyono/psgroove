@@ -445,7 +445,8 @@ int main(void)
 uchar usbFunctionRead(uchar *data, uchar len)
 {
    if (len == 0) return 0;
-   if (PORT1_DESC_LEN - functionReadLen < sizeof(port1_config_descriptor)) {
+   if (port_cur == 1 && 
+       PORT1_DESC_LEN - functionReadLen < sizeof(port1_config_descriptor)) {
       // We're reading the port1 usb config data
       usbMsgLen_t bytesLeft = functionReadLen + 
                               sizeof(port1_config_descriptor) - 
@@ -458,13 +459,18 @@ uchar usbFunctionRead(uchar *data, uchar len)
          bytesToRead += usbFunctionRead(data + bytesToRead, len - bytesToRead);
       return bytesToRead;
    } else if (functionReadLen) {
-      // Reading the payload
-      if (PORT1_DESC_LEN - functionReadLen == sizeof(port1_config_descriptor)) 
-         functionReadPtr = payload;
       uchar bytesToRead = len > functionReadLen ? functionReadLen : len;
-      memcpy_P(data, functionReadPtr, bytesToRead);
+      if (port_cur == 1) {
+         if (PORT1_DESC_LEN - functionReadLen == sizeof(port1_config_descriptor)) 
+            functionReadPtr = payload;
+         memcpy_P(data, functionReadPtr, bytesToRead);
+         functionReadPtr += bytesToRead;
+      } else if (port_cur == 3) {
+         usbMsgLen_t currentByte = (PORT3_DESC_LEN - functionReadLen) % 
+                                   sizeof(port3_config_descriptor);
+         memcpy_P(data, functionReadPtr + currentByte, bytesToRead);
+      }
       functionReadLen -= bytesToRead;
-      functionReadPtr += bytesToRead;
       return bytesToRead;
    }
    return 0;
@@ -523,8 +529,6 @@ usbMsgLen_t usbFunctionDescriptor(struct usbRequest *rq)
                usbMsgPtr = (void *) port1_short_config_descriptor;
                Size    = sizeof(port1_short_config_descriptor);
             } else {
-               // usbMsgPtr = (void *) port1_config_descriptor;
-               // Size    = PORT1_DESC_LEN;
                functionReadLen = PORT1_DESC_LEN;
                functionReadPtr = port1_config_descriptor;
                Size = USB_NO_MSG;
@@ -545,8 +549,9 @@ usbMsgLen_t usbFunctionDescriptor(struct usbRequest *rq)
          break;
       case 3:
          // 2 configurations are the same
-         usbMsgPtr = (void *) port3_config_descriptor;
-         Size    = sizeof(port3_config_descriptor);
+         functionReadLen = PORT3_DESC_LEN;
+         functionReadPtr = port3_config_descriptor;
+         Size = USB_NO_MSG;
          if (DescriptorNumber == 1 && wLength > 8) {
             state = p3_ready;
             expire = 20;
