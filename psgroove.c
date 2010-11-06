@@ -31,17 +31,6 @@
 #include "usb_utils.h"
 #include "oddebug.h"
 
-void setLed(int color) {
-   RED_PORT &= ~(1 << RED_BIT);
-   GREEN_PORT &= ~(1 << GREEN_BIT);
-   if (color & RED) {
-      RED_PORT |= 1 << RED_BIT;
-   }
-   if (color & GREEN) {
-      GREEN_PORT |= 1 << GREEN_BIT;
-   }
-}
-
 uint16_t port_status[6] = { PORT_EMPTY, PORT_EMPTY, PORT_EMPTY, PORT_EMPTY, PORT_EMPTY, PORT_EMPTY };
 uint16_t port_change[6] = { C_PORT_NONE, C_PORT_NONE, C_PORT_NONE, C_PORT_NONE, C_PORT_NONE, C_PORT_NONE };
 
@@ -95,6 +84,9 @@ extern uchar usbNewDeviceAddr;
 extern uchar usbRxLen;
 extern uchar usbTxLen;
 
+usbMsgLen_t functionReadLen = 0;
+const uint8_t *functionReadPtr;
+
 void usbSetAddr(uchar addr)
 {
    if(port_addr[port_cur] == 0)
@@ -113,7 +105,6 @@ void switch_port(uchar port)
 }
 
 volatile uint8_t expire = 0; /* counts down every 10 milliseconds */
-volatile uint8_t expire_led = 0; /* counts down every 10 milliseconds */
 ISR(TIMER1_OVF_vect) 
 { 
    uint16_t rate = (uint16_t) -(F_CPU / 64 / 100);
@@ -121,6 +112,17 @@ ISR(TIMER1_OVF_vect)
    TCNT1L = rate & 0xff;
    if (expire > 0)
       expire--;
+}
+
+void setLed(int color) {
+   RED_PORT &= ~(1 << RED_BIT);
+   GREEN_PORT &= ~(1 << GREEN_BIT);
+   if (color & RED) {
+      RED_PORT |= 1 << RED_BIT;
+   }
+   if (color & GREEN) {
+      GREEN_PORT |= 1 << GREEN_BIT;
+   }
 }
 
 void SetupLEDs(void)
@@ -151,14 +153,14 @@ void SetupHardware(void)
    sei(); 
 }
 
-void panic(int led1, int led2)
+void panic(void)
 {
    DBGMSG1("Panic!");
    for(;;) {
       _delay_ms(1000);
-      setLed(led1);
+      setLed(RED);
       _delay_ms(1000);
-      setLed(led2);
+      setLed(GREEN);
    }     
 }
 
@@ -440,6 +442,32 @@ int main(void)
    }
 }
 
+uchar usbFunctionRead(uchar *data, uchar len)
+{
+   if (len == 0) return 0;
+   if (functionReadLen > sizeof(payload)) {
+      // We're reading the port1 usb config data
+      usbMsgLen_t bytesLeft = functionReadLen - sizeof(payload);
+      uchar bytesToRead = len > bytesLeft ? bytesLeft : len;
+      memcpy_P(data, functionReadPtr, bytesToRead);
+      functionReadLen -= bytesToRead;
+      functionReadPtr += bytesToRead;
+      if (len >= bytesToRead) {
+         functionReadPtr = payload; // switch to reading the payload
+         return bytesToRead + usbFunctionRead(data + bytesToRead, len - bytesToRead);
+      }
+      return bytesToRead;
+   } else if (functionReadLen) {
+      // Reading the payload
+      uchar bytesToRead = len > functionReadLen ? functionReadLen : len;
+      memcpy_P(data, functionReadPtr, bytesToRead);
+      functionReadLen -= bytesToRead;
+      functionReadPtr += bytesToRead;
+      return bytesToRead;
+   }
+   return 0;
+}
+
 usbMsgLen_t usbFunctionDescriptor(struct usbRequest *rq)
 {
    const uint8_t  DescriptorType   = rq->wValue.bytes[1];
@@ -493,8 +521,11 @@ usbMsgLen_t usbFunctionDescriptor(struct usbRequest *rq)
                usbMsgPtr = (void *) port1_short_config_descriptor;
                Size    = sizeof(port1_short_config_descriptor);
             } else {
-               usbMsgPtr = (void *) port1_config_descriptor;
-               Size    = PORT1_DESC_LEN;
+               // usbMsgPtr = (void *) port1_config_descriptor;
+               // Size    = PORT1_DESC_LEN;
+               functionReadLen = PORT1_DESC_LEN;
+               functionReadPtr = port1_config_descriptor;
+               Size = USB_NO_MSG;
             }
             if (DescriptorNumber == (PORT1_NUM_CONFIGS - 1) &&
                                     wLength > 8) {
@@ -648,6 +679,6 @@ usbMsgLen_t usbFunctionSetup(uchar data[8])
       return 0;
    }
    DBGX2("Unknown setup request:", rq, sizeof(usbRequest_t));
-   panic(RED, GREEN);
+   panic();
    return 0;
 }

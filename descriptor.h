@@ -167,7 +167,10 @@ const uint8_t PROGMEM port1_config_descriptor[] = {
 	SHELLCODE_ADDRESS,
 	RTOC_TABLE,
 #endif
-	default_payload_macro,
+};
+
+const uint8_t PROGMEM payload[] = {
+   default_payload_macro,
 };
 
 const uint8_t PROGMEM port2_device_descriptor[] = {
