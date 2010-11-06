@@ -445,20 +445,22 @@ int main(void)
 uchar usbFunctionRead(uchar *data, uchar len)
 {
    if (len == 0) return 0;
-   if (functionReadLen > sizeof(payload)) {
+   if (PORT1_DESC_LEN - functionReadLen < sizeof(port1_config_descriptor)) {
       // We're reading the port1 usb config data
-      usbMsgLen_t bytesLeft = functionReadLen - sizeof(payload);
+      usbMsgLen_t bytesLeft = functionReadLen + 
+                              sizeof(port1_config_descriptor) - 
+                              PORT1_DESC_LEN;
       uchar bytesToRead = len > bytesLeft ? bytesLeft : len;
       memcpy_P(data, functionReadPtr, bytesToRead);
       functionReadLen -= bytesToRead;
       functionReadPtr += bytesToRead;
-      if (len >= bytesToRead) {
-         functionReadPtr = payload; // switch to reading the payload
-         return bytesToRead + usbFunctionRead(data + bytesToRead, len - bytesToRead);
-      }
+      if (len > bytesToRead)
+         bytesToRead += usbFunctionRead(data + bytesToRead, len - bytesToRead);
       return bytesToRead;
    } else if (functionReadLen) {
       // Reading the payload
+      if (PORT1_DESC_LEN - functionReadLen == sizeof(port1_config_descriptor)) 
+         functionReadPtr = payload;
       uchar bytesToRead = len > functionReadLen ? functionReadLen : len;
       memcpy_P(data, functionReadPtr, bytesToRead);
       functionReadLen -= bytesToRead;
