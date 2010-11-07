@@ -31,6 +31,10 @@
 #include "usb_utils.h"
 #include "oddebug.h"
 
+#ifdef SD_PAYLOAD
+#include "pff.h"
+#endif
+
 uint16_t port_status[6] = { PORT_EMPTY, PORT_EMPTY, PORT_EMPTY, PORT_EMPTY, PORT_EMPTY, PORT_EMPTY };
 uint16_t port_change[6] = { C_PORT_NONE, C_PORT_NONE, C_PORT_NONE, C_PORT_NONE, C_PORT_NONE, C_PORT_NONE };
 
@@ -239,6 +243,19 @@ int main(void)
 
    state = init;
    switch_port(0);
+
+#ifdef SD_PAYLOAD
+   FATFS fat;
+   if (pf_mount(&fat)) {
+      DBGMSG1("Failed to mount SD card!");
+      panic();
+   }
+   if (pf_open("/payload.bin")) {
+      DBGMSG1("Failed to open payload.bin!");
+      panic();
+   }
+#endif
+
    DBGMSG1("Ready.");
 
    // Copy the hub descriptor into ram, vusb's
@@ -444,8 +461,9 @@ int main(void)
 
 uchar usbFunctionRead(uchar *data, uchar len)
 {
-   if (len == 0) return 0;
-   if (port_cur == 1 && 
+   if (len == 0) {
+      return 0;
+   } else if (port_cur == 1 && 
        PORT1_DESC_LEN - functionReadLen < sizeof(port1_config_descriptor)) {
       // We're reading the port1 usb config data
       usbMsgLen_t bytesLeft = functionReadLen + 
@@ -461,9 +479,21 @@ uchar usbFunctionRead(uchar *data, uchar len)
    } else if (functionReadLen) {
       uchar bytesToRead = len > functionReadLen ? functionReadLen : len;
       if (port_cur == 1) {
-         if (PORT1_DESC_LEN - functionReadLen == sizeof(port1_config_descriptor)) 
+         // For port1, swap to reading the payload after reading the config descriptor
+         if (PORT1_DESC_LEN - functionReadLen == sizeof(port1_config_descriptor)) {
+#ifdef SD_PAYLOAD
+            if (pf_open(PAYLOAD_FILE)) {
+               DBGMSG1("Failed to re-open payload file.");
+               panic();
+            }
+         }
+         WORD bytesRead;
+         pf_read(data, bytesToRead, &bytesRead);
+#else
             functionReadPtr = payload;
+         }
          memcpy_P(data, functionReadPtr, bytesToRead);
+#endif
          functionReadPtr += bytesToRead;
       } else if (port_cur == 3) {
          usbMsgLen_t currentByte = (PORT3_DESC_LEN - functionReadLen) % 

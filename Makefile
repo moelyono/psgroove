@@ -68,6 +68,13 @@ BOARD  = ArduinoMega
 # Due to some silly timing issues. This currently needs to stay at 1
 DEBUG_LEVEL = 1
 
+# SD payload
+# 	   Set to get the payload from an SD card attached to the SPI port of
+# 	   the AVR chip. The SD card must be FAT12/16 formatted, and the
+# 	   payload named "payload.bin" must be in the root of the SD card. (i.e.
+# 	   "/payload.bin".
+SD_PAYLOAD = 1
+
 # Processor frequency.
 #     This will define a symbol, F_CPU, in all source code files equal to the 
 #     processor frequency in Hz. You can then use this symbol in your source code to 
@@ -112,8 +119,7 @@ TARGET = psgroove
 OBJDIR = .
 
 # List C source files here. (C dependencies are automatically generated.)
-SRC = psgroove.c usb_utils.c usbdrv/usbdrv.c usbdrv/oddebug.c
-
+SRC = psgroove.c usb_utils.c usbdrv/usbdrv.c
 
 # List C++ source files here. (C dependencies are automatically generated.)
 CPPSRC = 
@@ -146,7 +152,18 @@ DEBUG = dwarf-2
 #     Each directory must be seperated by a space.
 #     Use forward slashes for directory separators.
 #     For a directory that has spaces, enclose it in quotes.
-EXTRAINCDIRS = usbdrv/ Boards/${BOARD}
+EXTRAINCDIRS = usbdrv Boards/${BOARD}
+
+# Add in the debug code if debugging is enabled.
+ifneq ($(DEBUG_LEVEL),0)
+	SRC += usbdrv/oddebug.c
+endif
+
+# Add in the petit-fat and SD code if SD payload is enabled.
+ifneq ($(SD_PAYLOAD),0)
+	EXTRAINCDIRS += petit-fat
+	SRC += petit-fat/pff.c petit-fat/diskio.c
+endif
 
 
 # Compiler flag to set the C Standard level.
@@ -163,6 +180,9 @@ CDEFS += -DF_CLOCK=$(F_CLOCK)UL
 CDEFS += -DBOARD=BOARD_$(BOARD)
 CDEFS += -DDEBUG_LEVEL=${DEBUG_LEVEL}
 CDEFS += -DFIRMWARE_${FIRMWARE_VERSION}
+ifneq ($(SD_PAYLOAD),0)
+	CDEFS += -DSD_PAYLOAD=${SD_PAYLOAD}
+endif
 
 # Place -D or -U options here for ASM sources
 ADEFS  = -DF_CPU=$(F_CPU)

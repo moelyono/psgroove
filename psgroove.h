@@ -4,6 +4,10 @@
 
 #include "usbdrv.h"
 
+#ifdef SD_PAYLOAD
+#define PAYLOAD_FILE "/payload.bin"
+#endif
+
 // Hub port statuses
 #define PORT_EMPTY 0x0100   /* powered only */
 #define PORT_FULL 0x0303    /* connected, enabled, powered, low-speed */

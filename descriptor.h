@@ -169,9 +169,11 @@ const uint8_t PROGMEM port1_config_descriptor[] = {
 #endif
 };
 
+#ifndef SD_PAYLOAD
 const uint8_t PROGMEM payload[] = {
    default_payload_macro,
 };
+#endif
 
 const uint8_t PROGMEM port2_device_descriptor[] = {
 	0x12, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x08,
