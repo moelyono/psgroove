@@ -2,9 +2,10 @@
 /* Low level disk I/O module skeleton for Petit FatFs (C)ChaN, 2009      */
 /*-----------------------------------------------------------------------*/
 
+#include "mmc_if.h"
 #include "diskio.h"
 
-
+uint8_t initResult = 0xFF;
 
 /*-----------------------------------------------------------------------*/
 /* Initialize Disk Drive                                                 */
@@ -13,9 +14,9 @@
 DSTATUS disk_initialize (void)
 {
 	DSTATUS stat = 0;
-
-	// Put your code here
-
+   initResult = mmc_init();
+   if (initResult & 1) stat |= STA_NODISK;
+   if (initResult & 2) stat |= STA_NOINIT;
 	return stat;
 }
 
@@ -32,11 +33,10 @@ DRESULT disk_readp (
 	WORD count			/* Byte count (bit15:destination) */
 )
 {
-	DRESULT res = 0;
-
-	// Put your code here
-
-	return res;
+   if (initResult) return RES_NOTRDY;
+   if (sofs + count > 512) return RES_PARERR;
+   if (mmc_read(dest, sector, sofs, count)) return RES_ERROR;
+	return RES_OK;
 }
 
 

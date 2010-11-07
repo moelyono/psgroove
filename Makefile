@@ -162,7 +162,7 @@ endif
 # Add in the petit-fat and SD code if SD payload is enabled.
 ifneq ($(SD_PAYLOAD),0)
 	EXTRAINCDIRS += petit-fat
-	SRC += petit-fat/pff.c petit-fat/diskio.c
+	SRC += petit-fat/pff.c sd-diskio.c mmc_if.c
 endif
 
 
