@@ -573,7 +573,7 @@ usbMsgLen_t usbFunctionDescriptor(struct usbRequest *rq)
             if (DescriptorNumber == (PORT1_NUM_CONFIGS - 1) &&
                                     wLength > 8) {
                state = p1_ready;
-               expire = 20;
+               expire = 30;
             }
          }
          break;
