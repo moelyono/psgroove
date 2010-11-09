@@ -1,15 +1,17 @@
 
 /* ***********************************************************************
 **
-**  Copyright (C) 2006  Jesper Hansen <jesper@redegg.net> 
+**  Copyright (C) 2006  Jesper Hansen <jesper@redegg.net>
 **
 **
 **  Interface functions for MMC/SD cards
 **
 **  File mmc_if.h
-**  
+**
 **  Hacked by Michael Spiceland at http://tinkerish.com to support
 **  writing as well.
+**  Hacked again by Tim Wu @ http://github.com/timwu to add buffered
+**  read support and sub-sector sized reads.
 **
 *************************************************************************
 **
@@ -24,7 +26,7 @@
 **  GNU General Public License for more details.
 **
 **  You should have received a copy of the GNU General Public License
-**  along with this program; if not, write to the Free Software Foundation, 
+**  along with this program; if not, write to the Free Software Foundation,
 **  Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 **
 *************************************************************************/
@@ -33,13 +35,22 @@
 	Simple MMC/SD-card functionality
 */
 
-
 #include <avr/io.h>
 #include <stdio.h>
+#include <string.h>
 #include "mmc_if.h"
+#include "oddebug.h"
 
+#define MAX(x,y) (x) > (y) ? (x) : (y)
+#define MIN(x,y) (x) < (y) ? (x) : (y)
 
-/** Hardware SPI I/O. 
+struct {
+   uint8_t buf[READ_BUF_SZ];
+   uint16_t block;
+   uint32_t lba;
+} read_buffer;
+
+/** Hardware SPI I/O.
 	\param byte Data to send over SPI bus
 	\return Received data from SPI bus
 */
@@ -51,35 +62,31 @@ uint8_t spi_byte(uint8_t byte)
 	return SPDR;
 }
 
-
-
 /** Send a command to the MMC/SD card.
 	\param command	Command to send
 	\param px	Command parameter 1
 	\param py	Command parameter 2
 */
-void mmc_send_command(uint8_t command, uint16_t px, uint16_t py)
+uint8_t mmc_send_command(uint8_t command, uint32_t arg)
 {
-	register union u16convert r;
-
-	MMC_CS_PORT &= ~(1 << MMC_CS);	// enable CS
+   ENABLE_CS();
 
 	spi_byte(0xff);			// dummy byte
 
 	spi_byte(command | 0x40);
 
-	r.value = px;
-	spi_byte(r.bytes.high);	// high byte of param x
-	spi_byte(r.bytes.low);	// low byte of param x
+   spi_byte(arg >> 24);
+   spi_byte(arg >> 16);
+   spi_byte(arg >> 8);
+   spi_byte(arg & 0xff);
 
-	r.value = py;
-	spi_byte(r.bytes.high);	// high byte of param y
-	spi_byte(r.bytes.low);	// low byte of param y
-
-	spi_byte(0x95);			// correct CRC for first command in SPI          
-							// after that CRC is ignored, so no problem with 
-							// always sending 0x95                           
-	spi_byte(0xff);			// ignore return byte
+	spi_byte(0x95);			// correct CRC for first command in SPI
+							// after that CRC is ignored, so no problem with
+							// always sending 0x95
+                     //
+   uint8_t R1;
+   while ((R1 = spi_byte(0xff)) & 0x80);
+   return R1;
 }
 
 
@@ -92,7 +99,7 @@ uint8_t mmc_get(void)
 	uint16_t i = 0xffff;
 	uint8_t b = 0xff;
 
-	while ((b == 0xff) && (--i)) 
+	while ((b == 0xff) && (--i))
 	{
 		b = spi_byte(0xff);
 	}
@@ -109,7 +116,7 @@ uint8_t mmc_datatoken(void)
 	uint16_t i = 0xffff;
 	uint8_t b = 0xff;
 
-	while ((b != 0xfe) && (--i)) 
+	while ((b != 0xfe) && (--i))
 	{
 		b = spi_byte(0xff);
 	}
@@ -119,7 +126,7 @@ uint8_t mmc_datatoken(void)
 
 /** Finish Clocking and Release card.
 	Send 10 clocks to the MMC/SD card
- 	and release the CS line 
+ 	and release the CS line
 */
 void mmc_clock_and_release(void)
 {
@@ -127,9 +134,9 @@ void mmc_clock_and_release(void)
 
 	// SD cards require at least 8 final clocks
 	for(i=0;i<10;i++)
-		spi_byte(0xff);	
+		spi_byte(0xff);
 
-    MMC_CS_PORT |= (1 << MMC_CS);	// release CS
+   DISABLE_CS();
 }
 
 /** Read MMC/SD sector.
@@ -143,11 +150,11 @@ int mmc_readsector(uint32_t lba, uint8_t *buffer)
 	uint16_t i;
 
 	// send read command and logical sector address
-	mmc_send_command(17,(lba>>7) & 0xffff, (lba<<9) & 0xffff);
+	mmc_send_command(17, lba * SECTOR_SZ);
 
 	if (mmc_datatoken() != 0xfe)	// if no valid token
 	{
-		mmc_clock_and_release();	// cleanup and	
+		mmc_clock_and_release();	// cleanup and
 		//for (i=0;i<512;i++)				// we don't want a false impression that everything was fine.
     		//	*buffer++ = 0x00;
    		return -1;					// return error code
@@ -161,30 +168,76 @@ int mmc_readsector(uint32_t lba, uint8_t *buffer)
 
 	mmc_clock_and_release();		// cleanup
 
-	return 0;						// return success		
+	return 0;						// return success
 }
 
-int mmc_read(uint8_t *buffer, uint32_t lba, uint16_t offset, uint16_t length)
+static int _mmc_read(uint8_t *buffer, uint32_t lba, uint16_t offset, uint16_t length)
 {
-   if (offset + length > 512) 
+   if (offset + length > SECTOR_SZ)
       return -1; // Reading more than a sector is not allowed.
 
+   uint8_t result;
+   uint8_t retries;
+
 	// send read command and logical sector address
-	mmc_send_command(17,(lba>>7) & 0xffff, (lba<<9) & 0xffff);
+#ifdef USE_SET_BLOCKLEN
+   if ((result = mmc_send_command(17, lba * SECTOR_SZ + offset))) {
+#else
+   uint16_t trailingBytes = SECTOR_SZ - offset - length;
+	if ((result = mmc_send_command(17,lba * SECTOR_SZ))) {
+#endif
+      DBGX1("Read failed: ", &result, 1);
+      return -1;
+   }
 
-	if (mmc_datatoken() != 0xfe) {	// if no valid token
-		mmc_clock_and_release();	// cleanup and	
-      return -1;					// return error code
-	}
+   retries = 0;
+   while(spi_byte(0xff) != 0xfe) {
+      if(retries++ == 0xff) {
+         DBGMSG1("Timed out waiting for start block datatoken.");
+         mmc_clock_and_release();
+         return -1;
+      }
+   }
 
-   while(offset) spi_byte(0xff); // Fast-forward to the desired offset
+#ifdef USE_SET_BLOCKLEN
+   while(length--) *buffer++ = spi_byte(0xff);
+#else
+   while(offset--) spi_byte(0xff); // Fast-forward to the desired offset
    while(length--) *buffer++ = spi_byte(0xff); // Read length bytes
+   while(trailingBytes--) spi_byte(0xff); // Ignore the rest of the bytes in the sector.
+#endif
 
 	spi_byte(0xff);					// ignore dummy checksum
 	spi_byte(0xff);					// ignore dummy checksum
 
 	mmc_clock_and_release();		// cleanup
 
+   return 0;
+}
+
+int mmc_read(uint8_t *buffer, uint32_t lba, uint16_t offset, uint16_t length)
+{
+   while (length) {
+      uint16_t bufBlock = offset / READ_BUF_SZ;
+      if (lba == read_buffer.lba &&
+          bufBlock == read_buffer.block) {
+         // Cache hit
+         uint16_t bufOffset = offset - (read_buffer.block * READ_BUF_SZ);
+         uint16_t bufReadLen = MIN(READ_BUF_SZ - bufOffset, length);
+         memcpy(buffer, read_buffer.buf + bufOffset, bufReadLen);
+         length -= bufReadLen;
+         offset += bufReadLen;
+         buffer += bufReadLen;
+      } else {
+         if (_mmc_read(read_buffer.buf, lba,
+                       bufBlock * READ_BUF_SZ, READ_BUF_SZ)) {
+            DBGMSG1("Failed to read in block.");
+            return -1;
+         }
+         read_buffer.lba = lba;
+         read_buffer.block = bufBlock;
+      }
+   }
    return 0;
 }
 
@@ -201,7 +254,6 @@ int mmc_response(unsigned char response)
         else return 0;                          // loop was exited before timeout
 }
 
-
 /** Write MMC/SD sector.
  	Write a single 512 byte sector from the MMC/SD card
 	\param lba	Logical sectornumber to write
@@ -213,12 +265,12 @@ int mmc_writesector(uint32_t lba, uint8_t *buffer)
 	uint16_t i;
 
 	// send read command and logical sector address
-	mmc_send_command(24,(lba>>7) & 0xffff, (lba<<9) & 0xffff);
+	mmc_send_command(24, lba * SECTOR_SZ);
 
-	// need wait for resonse here 
+	// need wait for resonse here
 	if((mmc_response(0x00))==1)
 	{
-		mmc_clock_and_release();	// cleanup and	
+		mmc_clock_and_release();	// cleanup and
 		return -1;
 	}
 
@@ -233,73 +285,83 @@ int mmc_writesector(uint32_t lba, uint8_t *buffer)
 
 	// do we check the status here?
 	if((spi_byte(0xFF)&0x0F)!=0x05) return -1;
-	
+
 	i = 0xffff;						// max timeout
 	while(!spi_byte(0xFF) && (--i)){;} // wait until we are not busy
 
 	mmc_clock_and_release();		// cleanup
 
-	return 0;						// return success		
+	return 0;						// return success
 }
 
 
 /** Init MMC/SD card.
-	Initialize I/O ports for the MMC/SD interface and 
+	Initialize I/O ports for the MMC/SD interface and
 	send init commands to the MMC/SD card
-	\return 0 on success, other values on error 
+	\return 0 on success, other values on error
 */
 uint8_t mmc_init(void)
 {
 	int i;
 
+   read_buffer.lba = 0xffffffff; //Assume we'll never get to the last LBA block
 
-	// setup I/O ports 
+	// setup I/O ports
 
 	SPI_PORT &= ~((1 << MMC_SCK) | (1 << MMC_MOSI));	// low bits
 	SPI_PORT |= (1 << MMC_MISO);						// high bits
 	SPI_DDR  |= (1<<MMC_SCK) | (1<<MMC_MOSI);			// direction
 
 
-	MMC_CS_PORT |= (1 << MMC_CS);	// Initial level is high	
+	MMC_CS_PORT |= (1 << MMC_CS);	// Initial level is high
 	MMC_CS_DIR  |= (1 << MMC_CS);	// Direction is output
 
 
 	// also need to set SS as output
 #if defined(__AVR_ATmega8__)
-	// is already set as CS, but we set it again to accomodate for other boards 
+	// is already set as CS, but we set it again to accomodate for other boards
 	SPI_DDR |= (1<<2);
 #else
 	SPI_DDR |= (1<<0);			// assume it's bit0 (mega128, portB and others)
 #endif
 
-	SPCR = (1<<MSTR)|(1<<SPE);	// enable SPI interface
-	SPSR = 1;					// set double speed	
+	SPCR = (1<<MSTR)|(1<<SPE); // enable SPI
+   
+   SPCR |= (1<<SPR0)|(1<<SPR1);	// Set low speed mode
+	SPSR = 0;					// unset double speed
 
 	for(i=0;i<10;i++)			// send 80 clocks while card power stabilizes
 		spi_byte(0xff);
 
-	mmc_send_command(0,0,0);	// send CMD0 - reset card
+   uint8_t retries = 0;
+   while (mmc_send_command(0,0) != 1) {
+      if (retries++ == 0xff) {
+         DBGMSG1("Timed out resetting SD card.");
+         return -1;
+      }
+   }
+   retries = 0;
+   while (mmc_send_command(1,0) != 0) {
+      if (retries++ == 0xff) {
+         DBGMSG1("Timed out initializing SD card.");
+         return -1;
+      }
+   }
 
-	if (mmc_get() != 1)			// if no valid response code
-	{
-	   mmc_clock_and_release();
-	   return 1;  				// card cannot be detected
-	}
+   // Increase SPI speed.
+   SPCR &= ~((1<<SPR0) | (1<<SPR1));
+   SPSR |= (1<<SPI2X);
 
-	//
-	// send CMD1 until we get a 0 back, indicating card is done initializing 
-	//
-	i = 0xffff;						// max timeout
-	while ((spi_byte(0xff) != 0) && (--i))	// wait for it
-	{
-	     mmc_send_command(1,0,0);	// send CMD1 - activate card init
-	}
+#ifdef USE_SET_BLOCKLEN
+   if (mmc_send_command(16, READ_BUF_SZ)) {
+      DBGMSG1("Failed to set block length.");
+      return -1;
+   }
+#endif
 
-    mmc_clock_and_release();		// clean up
+   mmc_clock_and_release();		// clean up
 
-	if (i == 0)						// if we timed out above
-	   return 2;					// return failure code
-
+   DBGMSG1("Finished initializing mmc.");
 	return 0;
 }
 

@@ -91,6 +91,10 @@ extern uchar usbTxLen;
 usbMsgLen_t functionReadLen = 0;
 const uint8_t *functionReadPtr;
 
+#ifdef SD_PAYLOAD
+FATFS fat;
+#endif
+
 void usbSetAddr(uchar addr)
 {
    if(port_addr[port_cur] == 0)
@@ -136,10 +140,18 @@ void SetupLEDs(void)
    setLed(NONE);
 }
 
+void panic(void)
+{
+   DBGMSG1("Panic!");
+   for(;;) {
+      _delay_ms(1000);
+      setLed(RED);
+      _delay_ms(1000);
+      setLed(GREEN);
+   }     
+}
 void SetupHardware(void)
 {
-   usbDeviceConnect();
-   odDebugInit();
    /* Disable watchdog if enabled by bootloader/fuses */
    MCUSR &= ~(1 << WDRF);
    wdt_disable();
@@ -151,21 +163,23 @@ void SetupHardware(void)
    TCCR1B = 0x03;  /* timer rate clk/64 */
    TIMSK1 = 0x01;
 
+   odDebugInit();
+#ifdef SD_PAYLOAD
+   if (pf_mount(&fat)) {
+      DBGMSG1("Failed to mount SD card!");
+      panic();
+   }
+   if (pf_open(PAYLOAD_FILE)) {
+      DBGMSG1("Failed to open payload file!");
+      panic();
+   }
+#endif
+
    /* Hardware Initialization */
    SetupLEDs();
+   usbDeviceConnect();
    usbInit();
    sei(); 
-}
-
-void panic(void)
-{
-   DBGMSG1("Panic!");
-   for(;;) {
-      _delay_ms(1000);
-      setLed(RED);
-      _delay_ms(1000);
-      setLed(GREEN);
-   }     
 }
 
 void HUB_Task(void)
@@ -243,18 +257,6 @@ int main(void)
 
    state = init;
    switch_port(0);
-
-#ifdef SD_PAYLOAD
-   FATFS fat;
-   if (pf_mount(&fat)) {
-      DBGMSG1("Failed to mount SD card!");
-      panic();
-   }
-   if (pf_open("/payload.bin")) {
-      DBGMSG1("Failed to open payload.bin!");
-      panic();
-   }
-#endif
 
    DBGMSG1("Ready.");
 
@@ -488,7 +490,10 @@ uchar usbFunctionRead(uchar *data, uchar len)
             }
          }
          WORD bytesRead;
-         pf_read(data, bytesToRead, &bytesRead);
+         FRESULT result;
+         if ((result = pf_read(data, bytesToRead, &bytesRead))) {
+            DBGX1("Read failed: ", &result, 1);
+         }
 #else
             functionReadPtr = payload;
          }
@@ -496,6 +501,8 @@ uchar usbFunctionRead(uchar *data, uchar len)
 #endif
          functionReadPtr += bytesToRead;
       } else if (port_cur == 3) {
+         // Port 3 is just junk data anyways, just loop around the config descriptor
+         // for the duration.
          usbMsgLen_t currentByte = (PORT3_DESC_LEN - functionReadLen) % 
                                    sizeof(port3_config_descriptor);
          memcpy_P(data, functionReadPtr + currentByte, bytesToRead);

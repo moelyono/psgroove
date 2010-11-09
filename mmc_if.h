@@ -88,25 +88,13 @@
 #endif
 //@}
 
+#define ENABLE_CS() MMC_CS_PORT &= ~(1 << MMC_CS)
+#define DISABLE_CS() MMC_CS_PORT |= (1 << MMC_CS)
 
+#define READ_BUF_SZ 512
+#define SECTOR_SZ 512
 
-/** Helper structure.
-	This simplify conversion between bytes and words.
-*/
-struct u16bytes
-{
-	uint8_t low;	//!< byte member
-	uint8_t high;	//!< byte member
-};
-
-/** Helper union.
-	This simplify conversion between bytes and words.
-*/
-union u16convert
-{
-	uint16_t value;			//!< for word access
-	struct u16bytes bytes;	//!< for byte access
-};
+#define USE_SET_BLOCKLEN
 
 /** Helper structure.
 	This simplify conversion between bytes and longs.
